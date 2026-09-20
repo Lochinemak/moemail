@@ -166,6 +166,14 @@ export function LoginForm({ turnstile }: LoginFormProps) {
       }
 
       // 注册成功后自动登录
+      if (turnstileEnabled) {
+        setActiveTab("login")
+        setConfirmPassword("")
+        resetTurnstile()
+        setLoading(false)
+        toast({ title: t("toast.registerSuccess"), description: t("toast.registerSuccessDesc") })
+        return
+      }
       const result = await signIn("credentials", {
         username,
         password,

@@ -1,3 +1,5 @@
+import { mediaResponseHeaders, SAFE_IMAGE_TYPES } from "../app/lib/media"
+
 interface Env {
   DB: D1Database
   EMAIL_ASSETS: R2Bucket
@@ -22,8 +24,8 @@ export default {
         "e.expires_at AS emailExpiresAt FROM message_attachment ma " +
         "JOIN message m ON m.id = ma.message_id JOIN email e ON e.id = m.emailId " +
         "WHERE ma.id = ? AND ma.message_id = ? AND ma.media_token = ? " +
-        "AND ma.expires_at = ? LIMIT 1"
-      ).bind(attachmentId, messageId, signature, exp * 1000).first<{
+        "AND CAST(ma.expires_at / 1000 AS INTEGER) = ? LIMIT 1"
+      ).bind(attachmentId, messageId, signature, exp).first<{
         objectKey: string
         contentType: string
         size: number
@@ -33,15 +35,10 @@ export default {
       if (!attachment || attachment.attachmentExpiresAt < Date.now() || attachment.emailExpiresAt < Date.now()) {
         return new Response("Gone", { status: 410 })
       }
+      if (!SAFE_IMAGE_TYPES.has(attachment.contentType)) return new Response("Unsupported media", { status: 415 })
       const object = await env.EMAIL_ASSETS.get(attachment.objectKey)
       if (!object) return new Response("Not found", { status: 404 })
-      const headers = new Headers({
-        "Content-Type": attachment.contentType,
-        "Content-Length": String(attachment.size),
-        "Content-Disposition": "inline",
-        "Cache-Control": "public, max-age=86400, immutable",
-        "X-Content-Type-Options": "nosniff",
-      })
+      const headers = mediaResponseHeaders(attachment.contentType, attachment.size)
       if (object.httpEtag) headers.set("ETag", object.httpEtag)
       return new Response(object.body, { headers })
     } catch (error) {

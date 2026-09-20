@@ -1,4 +1,4 @@
-import { WEBHOOK_CONFIG } from "@/config"
+import { WEBHOOK_CONFIG } from "../config/webhook"
 
 export interface EmailMessage {
   emailId: string
@@ -20,10 +20,10 @@ export async function callWebhook(url: string, payload: WebhookPayload) {
   let lastError: Error | null = null
   
   for (let i = 0; i < WEBHOOK_CONFIG.MAX_RETRIES; i++) {
-    try {
-      const controller = new AbortController()
-      const timeoutId = setTimeout(() => controller.abort(), WEBHOOK_CONFIG.TIMEOUT)
+    const controller = new AbortController()
+    const timeoutId = setTimeout(() => controller.abort(), WEBHOOK_CONFIG.TIMEOUT)
 
+    try {
       const response = await fetch(url, {
         method: "POST",
         headers: {
@@ -32,9 +32,8 @@ export async function callWebhook(url: string, payload: WebhookPayload) {
         },
         body: JSON.stringify(payload.data),
         signal: controller.signal,
+        redirect: "error",
       })
-
-      clearTimeout(timeoutId)
 
       if (response.ok) {
         return true
@@ -43,10 +42,11 @@ export async function callWebhook(url: string, payload: WebhookPayload) {
       lastError = new Error(`HTTP error! status: ${response.status}`)
     } catch (error) {
       lastError = error as Error
-      
-      if (i < WEBHOOK_CONFIG.MAX_RETRIES - 1) {
-        await new Promise(resolve => setTimeout(resolve, WEBHOOK_CONFIG.RETRY_DELAY))
-      }
+    } finally {
+      clearTimeout(timeoutId)
+    }
+    if (i < WEBHOOK_CONFIG.MAX_RETRIES - 1) {
+      await new Promise(resolve => setTimeout(resolve, WEBHOOK_CONFIG.RETRY_DELAY))
     }
   }
 

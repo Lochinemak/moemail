@@ -1,6 +1,6 @@
 "use client"
 
-import { useState } from "react"
+import { useState, useRef } from "react"
 import { useTranslations } from "next-intl"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
@@ -30,6 +30,7 @@ export function SendDialog({ emailId, fromAddress, onSendSuccess }: SendDialogPr
   const [to, setTo] = useState("")
   const [subject, setSubject] = useState("")
   const [content, setContent] = useState("")
+  const attempt = useRef<{ payload: string; key: string } | null>(null)
   const { toast } = useToast()
 
   const handleSend = async () => {
@@ -44,14 +45,17 @@ export function SendDialog({ emailId, fromAddress, onSendSuccess }: SendDialogPr
 
     setLoading(true)
     try {
+      const payload = JSON.stringify({ emailId, to, subject, content })
+      if (attempt.current?.payload !== payload) attempt.current = { payload, key: crypto.randomUUID() }
       const response = await fetch(`/api/emails/${emailId}/send`, {
         method: "POST",
-        headers: { "Content-Type": "application/json" },
+        headers: { "Content-Type": "application/json", "Idempotency-Key": attempt.current.key },
         body: JSON.stringify({ to, subject, content })
       })
 
       if (!response.ok) {
-        const data = await response.json()
+        const data = await response.json() as { error: string; retryWithNewKey?: boolean }
+        if (data.retryWithNewKey) attempt.current = null
         toast({
           title: tList("error"),
           description: (data as { error: string }).error,
@@ -68,6 +72,7 @@ export function SendDialog({ emailId, fromAddress, onSendSuccess }: SendDialogPr
       setTo("")
       setSubject("")
       setContent("")
+      attempt.current = null
       
       onSendSuccess?.()
     
@@ -139,4 +144,4 @@ export function SendDialog({ emailId, fromAddress, onSendSuccess }: SendDialogPr
       </DialogContent>
     </Dialog>
   )
-} 
+}

@@ -1,6 +1,7 @@
+import { tryDrainAssetDeletionQueue } from "@/lib/asset-cleanup"
 import { NextResponse } from "next/server"
 import { createDb } from "@/lib/db"
-import { messages, emails, messageAttachments } from "@/lib/schema"
+import { messages, emails } from "@/lib/schema"
 import { getRequestContext } from "@cloudflare/next-on-pages"
 import { and, eq } from "drizzle-orm"
 import { getUserId } from "@/lib/apiKey"
@@ -44,12 +45,10 @@ export async function DELETE(
       )
     }
 
-    const attachments = await db.query.messageAttachments.findMany({ where: eq(messageAttachments.messageId, messageId) })
-    await Promise.all(attachments.map((attachment) => env.EMAIL_ASSETS.delete(attachment.objectKey)))
-    await db.delete(messageAttachments).where(eq(messageAttachments.messageId, messageId))
     await db.delete(messages)
         .where(eq(messages.id, messageId))
 
+    await tryDrainAssetDeletionQueue(env)
     return NextResponse.json({ success: true })
   } catch (error) {
     console.error('Failed to delete email:', error)
@@ -73,7 +72,7 @@ export async function GET(_request: Request, { params }: { params: Promise<{ id:
       )
     })
 
-    if (!email) {
+    if (!email || email.expiresAt <= new Date()) {
       return NextResponse.json(
         { error: "无权限查看" },
         { status: 403 }
@@ -103,7 +102,7 @@ export async function GET(_request: Request, { params }: { params: Promise<{ id:
         content: message.content,
         html: message.html,
         received_at: message.receivedAt.getTime(),
-        sent_at: message.receivedAt.getTime(),
+        sent_at: message.sentAt.getTime(),
         type: message.type as 'received' | 'sent'
       }
     })

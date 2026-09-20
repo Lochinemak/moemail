@@ -29,9 +29,8 @@ export interface TurnstileVerificationResult {
 export async function verifyTurnstileToken(token?: string | null): Promise<TurnstileVerificationResult> {
   const config = await getTurnstileConfig()
 
-  if (!config.enabled || !config.siteKey || !config.secretKey) {
-    return { success: true }
-  }
+  if (!config.enabled) return { success: true }
+  if (!config.siteKey || !config.secretKey) return { success: false, reason: "verification-failed" }
 
   const trimmedToken = token?.trim()
   if (!trimmedToken) {

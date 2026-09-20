@@ -1,11 +1,13 @@
 import { createDb } from "@/lib/db"
-import { userRoles, roles, messages, emails } from "@/lib/schema"
-import { eq, and, gte } from "drizzle-orm"
+import { userRoles, roles } from "@/lib/schema"
+import { eq } from "drizzle-orm"
 import { getRequestContext } from "@cloudflare/next-on-pages"
 import { EMAIL_CONFIG } from "@/config"
+import { countSends } from "./send-requests"
 
 export interface SendPermissionResult {
   canSend: boolean
+  canViewSent?: boolean
   error?: string
   remainingEmails?: number
 }
@@ -36,31 +38,18 @@ export async function checkSendPermission(
 
     if (skipDailyLimitCheck || userDailyLimit === 0) {
       return {
-        canSend: true
+        canSend: true,
+        canViewSent: true
       }
     }
     
-    const db = createDb()
-    const today = new Date()
-    today.setHours(0, 0, 0, 0)
+    const sentToday = await countSends(env.DB, userId)
+    const remainingEmails = Math.max(0, userDailyLimit - sentToday)
     
-    const sentToday = await db
-      .select()
-      .from(messages)
-      .innerJoin(emails, eq(messages.emailId, emails.id))
-      .where(
-        and(
-          eq(emails.userId, userId),
-          eq(messages.type, "sent"),
-          gte(messages.receivedAt, today)
-        )
-      )
-
-    const remainingEmails = Math.max(0, userDailyLimit - sentToday.length)
-    
-    if (sentToday.length >= userDailyLimit) {
+    if (sentToday >= userDailyLimit) {
       return {
         canSend: false,
+        canViewSent: true,
         error: `您今天已达到发件限制 (${userDailyLimit} 封)，请明天再试`,
         remainingEmails: 0
       }
@@ -68,6 +57,7 @@ export async function checkSendPermission(
 
     return {
       canSend: true,
+      canViewSent: true,
       remainingEmails
     }
   } catch (error) {
@@ -79,7 +69,7 @@ export async function checkSendPermission(
   }
 }
 
-async function getUserDailyLimit(userId: string): Promise<number> {
+export async function getUserDailyLimit(userId: string): Promise<number> {
   try {
     const db = createDb()
     
@@ -103,17 +93,9 @@ async function getUserDailyLimit(userId: string): Promise<number> {
       civilian: EMAIL_CONFIG.DEFAULT_DAILY_SEND_LIMITS.civilian,
     }
 
-    if (userRoleNames.includes("emperor")) {
-      return finalLimits.emperor
-    } else if (userRoleNames.includes("duke")) {
-      return finalLimits.duke
-    } else if (userRoleNames.includes("knight")) {
-      return finalLimits.knight
-    } else if (userRoleNames.includes("civilian")) {
-      return finalLimits.civilian
-    }
-
-    return -1
+    const role = (["emperor", "duke", "knight", "civilian"] as const).find(name => userRoleNames.includes(name))
+    const limit = role ? finalLimits[role] : -1
+    return Number.isSafeInteger(limit) && limit >= -1 ? limit : -1
   } catch (error) {
     console.error('Failed to get user daily limit:', error)
     return -1
@@ -122,4 +104,4 @@ async function getUserDailyLimit(userId: string): Promise<number> {
 
 export async function checkBasicSendPermission(userId: string): Promise<SendPermissionResult> {
   return checkSendPermission(userId, true)
-} 
+}

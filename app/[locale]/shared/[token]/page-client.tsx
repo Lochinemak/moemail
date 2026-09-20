@@ -55,6 +55,9 @@ export function SharedEmailPageClient({
   const [total, setTotal] = useState(initialTotal)
   const [refreshing, setRefreshing] = useState(false)
   const pollTimeoutRef = useRef<Timer | null>(null)
+  const detailRequest = useRef<AbortController | null>(null)
+  const listSeq = useRef(0)
+  const listPending = useRef(false)
   const messagesRef = useRef<Message[]>(initialMessages)
 
   // 当 messages 改变时更新 ref
@@ -63,6 +66,8 @@ export function SharedEmailPageClient({
   }, [messages])
 
   const fetchMessages = async (cursor?: string) => {
+    const seq = ++listSeq.current
+    listPending.current = true
     try {
       if (cursor) {
         setLoadingMore(true)
@@ -81,6 +86,7 @@ export function SharedEmailPageClient({
           total: number
         }
 
+        if (seq !== listSeq.current) return
         if (!cursor) {
           // 刷新时：合并新消息和旧消息，避免重复
           const newMessages = messagesData.messages
@@ -112,15 +118,18 @@ export function SharedEmailPageClient({
     } catch (err) {
       console.error("Failed to fetch messages:", err)
     } finally {
-      setLoadingMore(false)
-      setRefreshing(false)
+      if (seq === listSeq.current) {
+        listPending.current = false
+        setLoadingMore(false)
+        setRefreshing(false)
+      }
     }
   }
 
   const startPolling = () => {
     stopPolling()
     pollTimeoutRef.current = setInterval(() => {
-      if (!refreshing && !loadingMore) {
+      if (!listPending.current) {
         fetchMessages()
       }
     }, EMAIL_CONFIG.POLL_INTERVAL)
@@ -141,8 +150,12 @@ export function SharedEmailPageClient({
   // 启动轮询
   useEffect(() => {
     startPolling()
+    const sequence = listSeq
+    const detail = detailRequest
     return () => {
       stopPolling()
+      sequence.current++
+      detail.current?.abort()
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [token])
@@ -154,21 +167,25 @@ export function SharedEmailPageClient({
   }
 
   const fetchMessageDetail = async (messageId: string) => {
+    detailRequest.current?.abort()
+    const controller = new AbortController()
+    detailRequest.current = controller
     try {
       setMessageLoading(true)
 
-      const response = await fetch(`/api/shared/${token}/messages/${messageId}`)
+      const response = await fetch(`/api/shared/${token}/messages/${messageId}`, { signal: controller.signal })
 
       if (!response.ok) {
         throw new Error("Failed to load message")
       }
 
       const data = await response.json() as { message: MessageDetail }
-      setSelectedMessage(data.message)
+      if (!controller.signal.aborted) setSelectedMessage(data.message)
     } catch (err) {
+      if (controller.signal.aborted) return
       console.error("Failed to fetch message:", err)
     } finally {
-      setMessageLoading(false)
+      if (!controller.signal.aborted) setMessageLoading(false)
     }
   }
 

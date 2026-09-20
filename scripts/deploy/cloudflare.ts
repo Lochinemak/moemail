@@ -10,7 +10,7 @@ const KV_NAMESPACE_NAME = process.env.KV_NAMESPACE_NAME || "moemail-kv";
 const DATABASE_ID = process.env.DATABASE_ID;
 
 const client = new Cloudflare({
-  apiKey: CF_API_TOKEN,
+  apiToken: CF_API_TOKEN,
 });
 
 export const getPages = async () => {
@@ -35,7 +35,7 @@ export const createPages = async () => {
 
     await client.pages.projects.domains.create(PROJECT_NAME, {
       account_id: CF_ACCOUNT_ID,
-      name: CUSTOM_DOMAIN,
+      name: new URL(/^https?:\/\//i.test(CUSTOM_DOMAIN) ? CUSTOM_DOMAIN : `https://${CUSTOM_DOMAIN}`).hostname,
     });
 
     console.log("✅ Pages domain set successfully");
@@ -53,11 +53,10 @@ export const getDatabase = async () => {
     }
   }
 
-  const database = await client.d1.database.get(DATABASE_NAME, {
-    account_id: CF_ACCOUNT_ID,
-  });
-
-  return database;
+  for await (const database of client.d1.database.list({ account_id: CF_ACCOUNT_ID })) {
+    if (database.name === DATABASE_NAME) return database;
+  }
+  return createDatabase();
 };
 
 export const createDatabase = async () => {

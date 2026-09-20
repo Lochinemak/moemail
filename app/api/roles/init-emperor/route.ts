@@ -1,4 +1,4 @@
-import { auth, assignRoleToUser } from "@/lib/auth";
+import { auth, assignRoleToUser, findOrCreateRole } from "@/lib/auth";
 import { createDb } from "@/lib/db";
 import { roles, userRoles } from "@/lib/schema";
 import { ROLES } from "@/lib/permissions";
@@ -37,21 +37,15 @@ export async function GET() {
       return Response.json({ message: "你已经是皇帝了" });
     }
 
-    let roleId = emperorRole?.id;
-    if (!roleId) {
-      const [newRole] = await db.insert(roles)
-        .values({
-          name: ROLES.EMPEROR,
-          description: "皇帝（网站所有者）",
-        })
-        .returning({ id: roles.id });
-      roleId = newRole.id;
-    }
-
-    await assignRoleToUser(db, session.user.id, roleId);
+    const role = await findOrCreateRole(db, ROLES.EMPEROR);
+    // Database triggers enforce the singleton even when requests race.
+    await assignRoleToUser(db, session.user.id, role.id);
 
     return Response.json({ message: "登基成功，你已成为皇帝" });
   } catch (error) {
+    if (String(error).includes("single_emperor")) {
+      return Response.json({ error: "已存在皇帝" }, { status: 409 });
+    }
     console.error("Failed to initialize emperor:", error);
     return Response.json(
       { error: "登基称帝失败" },

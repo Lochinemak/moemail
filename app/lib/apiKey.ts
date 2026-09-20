@@ -5,6 +5,7 @@ import { NextResponse } from "next/server"
 import type { User } from "next-auth"
 import { auth } from "./auth"
 import { headers } from "next/headers"
+import { hasPermission, PERMISSIONS, type Role } from "./permissions"
 
 async function getUserByApiKey(key: string): Promise<User | null> {
   const db = createDb()
@@ -15,17 +16,21 @@ async function getUserByApiKey(key: string): Promise<User | null> {
       gt(apiKeys.expiresAt, new Date())
     ),
     with: {
-      user: true
+      user: { with: { userRoles: { with: { role: true } } } }
     }
   })
 
   if (!apiKey) return null
 
+  const roles = apiKey.user.userRoles.map(record => record.role.name as Role)
+  if (!hasPermission(roles, PERMISSIONS.MANAGE_API_KEY)) return null
+  if (!hasPermission(roles, PERMISSIONS.MANAGE_EMAIL)) return null
+
   return apiKey.user
 }
 
 export async function handleApiKeyAuth(apiKey: string, pathname: string) {
-  if (!pathname.startsWith('/api/emails') && !pathname.startsWith('/api/config')) {
+  if (!(pathname === '/api/emails' || pathname.startsWith('/api/emails/') || pathname === '/api/config')) {
     return NextResponse.json(
       { error: "无权限查看" },
       { status: 403 }
@@ -53,9 +58,8 @@ export async function handleApiKeyAuth(apiKey: string, pathname: string) {
 
 export const getUserId = async () => {
   const headersList = await headers()
-  const userId = headersList.get("X-User-Id")
-  
-  if (userId) return userId
+  const apiKey = headersList.get("X-API-Key")
+  if (apiKey) return (await getUserByApiKey(apiKey))?.id
 
   const session = await auth()
 

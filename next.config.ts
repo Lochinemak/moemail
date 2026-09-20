@@ -31,6 +31,20 @@ const withPWAConfigured = withPWA({
   dest: 'public',
   register: true,
   skipWaiting: true,
+  importScripts: ["/privacy-worker.js"],
+  cacheStartUrl: false,
+  dynamicStartUrl: false,
+  cacheOnFrontEndNav: false,
+  // Never cache mail, config, shared content or authenticated navigation.
+  runtimeCaching: [{
+    urlPattern: ({ url }: { url: URL }) => url.origin === self.location.origin && url.pathname.startsWith("/_next/static/"),
+    handler: "CacheFirst",
+    options: { cacheName: "moemail-static-v2" },
+  }, {
+    urlPattern: /.*/,
+    handler: "NetworkOnly",
+  }],
+  publicExcludes: ["!noprecache/**/*", "!**/*.html"],
   disable: process.env.NODE_ENV === 'development',
 }) as any
 

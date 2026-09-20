@@ -1,12 +1,15 @@
 import { createDb } from "@/lib/db";
-import { roles, userRoles } from "@/lib/schema";
+import { userRoles } from "@/lib/schema";
 import { eq } from "drizzle-orm";
-import { ROLES } from "@/lib/permissions";
-import { assignRoleToUser } from "@/lib/auth";
+import { ROLES, PERMISSIONS } from "@/lib/permissions";
+import { assignRoleToUser, checkPermission, findOrCreateRole } from "@/lib/auth";
 
 export const runtime = "edge";
 
 export async function POST(request: Request) {
+  if (!(await checkPermission(PERMISSIONS.PROMOTE_USER))) {
+    return Response.json({ error: "权限不足" }, { status: 403 });
+  }
   try {
     const { userId, roleName } = await request.json() as { 
       userId: string, 
@@ -42,25 +45,7 @@ export async function POST(request: Request) {
       );
     }
 
-    let targetRole = await db.query.roles.findFirst({
-      where: eq(roles.name, roleName),
-    });
-
-    if (!targetRole) {
-      const description = {
-        [ROLES.DUKE]: "超级用户",
-        [ROLES.KNIGHT]: "高级用户",
-        [ROLES.CIVILIAN]: "普通用户",
-      }[roleName];
-
-      const [newRole] = await db.insert(roles)
-        .values({
-          name: roleName,
-          description,
-        })
-        .returning();
-      targetRole = newRole;
-    }
+    const targetRole = await findOrCreateRole(db, roleName);
 
     await assignRoleToUser(db, userId, targetRole.id);
 

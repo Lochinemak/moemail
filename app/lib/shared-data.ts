@@ -86,6 +86,10 @@ export async function getSharedEmailMessages(token: string, limit = 20): Promise
       return { messages: [], nextCursor: null, total: 0 }
     }
 
+    if (share.email.expiresAt <= new Date()) {
+      return { messages: [], nextCursor: null, total: 0 }
+    }
+
     // 只显示接收的邮件，不显示发送的邮件
     const baseConditions = and(
       eq(messages.emailId, share.emailId),
@@ -171,6 +175,8 @@ export async function getSharedMessage(token: string): Promise<SharedMessage | n
     const email = await db.query.emails.findFirst({
       where: eq(emails.id, message.emailId)
     })
+
+    if (!email || email.expiresAt <= new Date()) return null
 
     return {
       id: message.id,

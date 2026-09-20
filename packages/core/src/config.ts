@@ -1,4 +1,4 @@
-import { existsSync, mkdirSync, readFileSync, writeFileSync } from "fs";
+import { existsSync, mkdirSync, readFileSync, writeFileSync, chmodSync } from "fs";
 import { homedir } from "os";
 import { join } from "path";
 
@@ -31,7 +31,7 @@ export function loadConfig(): CliConfig {
 
 export function saveConfig(key: string, value: string): void {
   if (!existsSync(CONFIG_DIR)) {
-    mkdirSync(CONFIG_DIR, { recursive: true });
+    mkdirSync(CONFIG_DIR, { recursive: true, mode: 0o700 });
   }
 
   let config: Record<string, string> = {};
@@ -52,5 +52,7 @@ export function saveConfig(key: string, value: string): void {
   }
 
   config[configKey] = value;
-  writeFileSync(CONFIG_FILE, JSON.stringify(config, null, 2));
+  chmodSync(CONFIG_DIR, 0o700);
+  writeFileSync(CONFIG_FILE, JSON.stringify(config, null, 2), { mode: 0o600 });
+  chmodSync(CONFIG_FILE, 0o600);
 }

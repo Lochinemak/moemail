@@ -51,3 +51,7 @@ public/sw.js
 wrangler.json
 wrangler.cleanup.json
 wrangler.email.json
+wrangler.media.json
+.email-secrets.json
+public/worker-*.js
+public/worker-*.js.map

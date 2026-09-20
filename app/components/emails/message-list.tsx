@@ -58,6 +58,8 @@ export function MessageList({ email, messageType, onMessageSelect, selectedMessa
   const [nextCursor, setNextCursor] = useState<string | null>(null)
   const [loadingMore, setLoadingMore] = useState(false)
   const pollTimeoutRef = useRef<Timer>(null)
+  const requestSeq = useRef(0)
+  const requestPending = useRef(false)
   const messagesRef = useRef<Message[]>([]) // 添加 ref 来追踪最新的消息列表
   const [total, setTotal] = useState(0)
   const [messageToDelete, setMessageToDelete] = useState<Message | null>(null)
@@ -69,6 +71,8 @@ export function MessageList({ email, messageType, onMessageSelect, selectedMessa
   }, [messages])
 
   const fetchMessages = async (cursor?: string) => {
+    const seq = ++requestSeq.current
+    requestPending.current = true
     try {
       const url = new URL(`/api/emails/${email.id}`, window.location.origin)
       if (messageType === 'sent') {
@@ -78,7 +82,9 @@ export function MessageList({ email, messageType, onMessageSelect, selectedMessa
         url.searchParams.set('cursor', cursor)
       }
       const response = await fetch(url)
+      if (!response.ok) throw new Error("Failed to load messages")
       const data = await response.json() as MessageResponse
+      if (seq !== requestSeq.current) return
       
       if (!cursor) {
         const newMessages = data.messages
@@ -105,16 +111,19 @@ export function MessageList({ email, messageType, onMessageSelect, selectedMessa
     } catch (error) {
       console.error("Failed to fetch messages:", error)
     } finally {
-      setLoading(false)
-      setRefreshing(false)
-      setLoadingMore(false)
+      if (seq === requestSeq.current) {
+        requestPending.current = false
+        setLoading(false)
+        setRefreshing(false)
+        setLoadingMore(false)
+      }
     }
   }
 
   const startPolling = () => {
     stopPolling()
     pollTimeoutRef.current = setInterval(() => {
-      if (!refreshing && !loadingMore) {
+      if (!requestPending.current) {
         fetchMessages()
       }
     }, EMAIL_CONFIG.POLL_INTERVAL)
@@ -187,16 +196,23 @@ export function MessageList({ email, messageType, onMessageSelect, selectedMessa
     if (!email.id) {
       return
     }
+    messagesRef.current = []
+    setMessages([])
+    setTotal(0)
     setLoading(true)
     setNextCursor(null)
     fetchMessages()
     startPolling() 
+    const sequence = requestSeq
+    const pending = requestPending
 
     return () => {
-      stopPolling() 
+      stopPolling()
+      sequence.current++
+      pending.current = false
     }
   // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [email.id])
+  }, [email.id, messageType])
 
   useEffect(() => {
     if (refreshTrigger && refreshTrigger > 0) {
@@ -316,4 +332,4 @@ export function MessageList({ email, messageType, onMessageSelect, selectedMessa
     </AlertDialog>
   </>
   )
-} 
+}

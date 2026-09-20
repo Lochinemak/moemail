@@ -11,8 +11,8 @@ export function registerWaitCommand(program: Command) {
     .option("--interval <seconds>", "poll interval in seconds", "5")
     .action(async (opts) => {
       const json = program.opts().json;
-      const timeout = parseInt(opts.timeout, 10);
-      const interval = parseInt(opts.interval, 10);
+      const timeout = Number(opts.timeout);
+      const interval = Number(opts.interval);
 
       try {
         const result = await pollForNewMessage(opts.emailId, {

@@ -20,7 +20,7 @@ interface MessageListContainerProps {
 export function MessageListContainer({ email, onMessageSelect, selectedMessageId, refreshTrigger }: MessageListContainerProps) {
   const t = useTranslations("emails.messages")
   const [activeTab, setActiveTab] = useState<'received' | 'sent'>('received')
-  const { canSend: canSendEmails } = useSendPermission()
+  const { canViewSent: canSendEmails } = useSendPermission()
 
   const handleTabChange = (tabId: string) => {
     setActiveTab(tabId as 'received' | 'sent')
@@ -75,4 +75,4 @@ export function MessageListContainer({ email, onMessageSelect, selectedMessageId
       )}
     </div>
   )
-} 
+}

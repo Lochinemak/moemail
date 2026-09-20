@@ -41,6 +41,7 @@ export function MessageView({ emailId, messageId, messageType = 'received' }: Me
   const { toast } = useToast()
 
   useEffect(() => {
+    const controller = new AbortController()
     const fetchMessage = async () => {
       try {
         setLoading(true)
@@ -48,10 +49,11 @@ export function MessageView({ emailId, messageId, messageType = 'received' }: Me
         
         const url = `/api/emails/${emailId}/${messageId}${messageType === 'sent' ? '?type=sent' : ''}`;
         
-        const response = await fetch(url)
+        const response = await fetch(url, { signal: controller.signal })
         
         if (!response.ok) {
           const errorData = await response.json()
+          if (controller.signal.aborted) return
           const errorMessage = (errorData as { error?: string }).error || t("loadError")
           setError(errorMessage)
           toast({
@@ -63,11 +65,11 @@ export function MessageView({ emailId, messageId, messageType = 'received' }: Me
         }
         
         const data = await response.json() as { message: Message }
+        if (controller.signal.aborted) return
         setMessage(data.message)
-        if (!data.message.html) {
-          setViewMode("text")
-        }
+        setViewMode(data.message.html ? "html" : "text")
       } catch (error) {
+        if (controller.signal.aborted) return
         const errorMessage = t("networkError")
         setError(errorMessage)
         toast({
@@ -77,14 +79,15 @@ export function MessageView({ emailId, messageId, messageType = 'received' }: Me
         })
         console.error("Failed to fetch message:", error)
       } finally {
-        setLoading(false)
+        if (!controller.signal.aborted) setLoading(false)
       }
     }
 
     fetchMessage()
+    return () => controller.abort()
   }, [emailId, messageId, messageType, toast, t, tList])
 
-  const updateIframeContent = () => {
+  useEffect(() => {
     if (viewMode === "html" && message?.html && iframeRef.current) {
       const iframe = iframeRef.current
       const doc = iframe.contentDocument || iframe.contentWindow?.document
@@ -175,12 +178,7 @@ export function MessageView({ emailId, messageId, messageType = 'received' }: Me
         }
       }
     }
-  }
-
-  // 监听主题变化和内容变化
-  useEffect(() => {
-    updateIframeContent()
-  }, [message?.html, viewMode, theme])
+  }, [message?.html, viewMode, theme, loading])
 
   if (loading) {
     return (

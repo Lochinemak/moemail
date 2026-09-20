@@ -1,5 +1,5 @@
 import { createDb } from "@/lib/db"
-import { messageShares, messages } from "@/lib/schema"
+import { messageShares, messages, emails } from "@/lib/schema"
 import { eq } from "drizzle-orm"
 import { NextResponse } from "next/server"
 
@@ -44,6 +44,11 @@ export async function GET(
         { error: "Message not found" },
         { status: 404 }
       )
+    }
+
+    const email = await db.query.emails.findFirst({ where: eq(emails.id, message.emailId) })
+    if (!email || email.expiresAt <= new Date()) {
+      return NextResponse.json({ error: "Email has expired" }, { status: 410 })
     }
 
     return NextResponse.json({

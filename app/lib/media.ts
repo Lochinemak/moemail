@@ -26,7 +26,46 @@ export async function verifyMediaSignature(secret: string, messageId: string, at
 }
 
 export function normalizeContentId(value: string | undefined | null): string {
-  return decodeURIComponent((value || "").trim().replace(/^cid:/i, "").replace(/^<|>$/g, "")).toLowerCase()
+  const raw = (value || "").trim().replace(/^cid:/i, "").replace(/^<|>$/g, "")
+  try {
+    return decodeURIComponent(raw).toLowerCase()
+  } catch {
+    return raw.toLowerCase()
+  }
+}
+
+export const SAFE_IMAGE_TYPES = new Set(["image/png", "image/jpeg", "image/gif", "image/webp"])
+
+export function detectImageType(bytes: Uint8Array): string | null {
+  if (bytes.length >= 8 && [137, 80, 78, 71, 13, 10, 26, 10].every((v, i) => bytes[i] === v)) return "image/png"
+  if (bytes.length >= 3 && bytes[0] === 255 && bytes[1] === 216 && bytes[2] === 255) return "image/jpeg"
+  const prefix = String.fromCharCode(...bytes.slice(0, 12))
+  if (prefix.startsWith("GIF87a") || prefix.startsWith("GIF89a")) return "image/gif"
+  if (prefix.startsWith("RIFF") && prefix.slice(8) === "WEBP") return "image/webp"
+  return null
+}
+
+export async function rewriteCidImages(html: string, urls: Map<string, string>) {
+  return new HTMLRewriter().on("img", {
+    element(element) {
+      const src = element.getAttribute("src")
+      if (!src || !/^cid:/i.test(src)) return
+      const url = urls.get(normalizeContentId(src))
+      if (url) element.setAttribute("src", url)
+    },
+  }).transform(new Response(html)).text()
+}
+
+export function mediaResponseHeaders(contentType: string, size: number) {
+  return new Headers({
+    "Content-Type": contentType,
+    "Content-Length": String(size),
+    "Content-Disposition": "inline",
+    "Cache-Control": "private, no-store",
+    "Content-Security-Policy": "default-src 'none'; sandbox",
+    "X-Content-Type-Options": "nosniff",
+    "Referrer-Policy": "no-referrer",
+  })
 }
 
 export function mediaUrl(base: string, messageId: string, attachmentId: string, exp: number, signature: string) {

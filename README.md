@@ -367,13 +367,19 @@ MoeMail supports sending emails using temporary addresses, based on [Resend](htt
    - Sent emails are saved in the message list of the corresponding mailbox
    - View all sent/received emails in mailbox detail page
 
+### Send API retries and upgrades
+
+`POST /api/emails/{id}/send` requires an `Idempotency-Key` header (8–128 letters, digits, `_` or `-`; a UUID is suitable). Reuse the same key and identical payload after a timeout or unknown delivery outcome. Reusing a key for different content returns 409. The web UI, CLI and MCP supply keys; CLI callers can use `--idempotency-key`, and MCP callers can pass `idempotencyKey`. A definitive rejection returns `retryWithNewKey: true`; correct the request/configuration before starting a new attempt.
+
+Apply migration `0021_review_integrity.sql` before deploying the updated application and workers. Daily usage is recorded independently of deletable mail; unresolved sends reserve quota. See the [upgrade and verification notes](specs/review-fixes-2026-09-20.md) for migration checks, legacy passwords and media configuration.
+
 ### Notes
 
 - 📋 **Resend Limits**: Please note Resend's sending limits and pricing
 - 🔐 **Domain Verification**: Using custom domains requires verification in Resend
 - 🚫 **Anti-Spam**: Please follow email sending standards, avoid spamming
 - 📊 **Quota Monitoring**: System counts daily usage, stops sending when limit reached
-- 🔄 **Quota Reset**: Daily quota resets at 00:00
+- 🔄 **Quota Reset**: Daily quota resets at 00:00 UTC
 
 ## Webhook Integration
 

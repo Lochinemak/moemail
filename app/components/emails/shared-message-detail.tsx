@@ -55,7 +55,7 @@ export function SharedMessageDetail({
     }
   }, [message])
 
-  const updateIframeContent = () => {
+  useEffect(() => {
     if (viewMode === "html" && message?.html && iframeRef.current) {
       const iframe = iframeRef.current
       const doc = iframe.contentDocument || iframe.contentWindow?.document
@@ -147,11 +147,7 @@ export function SharedMessageDetail({
         }
       }
     }
-  }
-
-  useEffect(() => {
-    updateIframeContent()
-  }, [message?.html, viewMode, theme])
+  }, [message?.html, viewMode, theme, loading])
 
   if (loading) {
     return (

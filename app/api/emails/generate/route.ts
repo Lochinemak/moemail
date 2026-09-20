@@ -7,8 +7,8 @@ import { EXPIRY_OPTIONS } from "@/types/email"
 import { EMAIL_CONFIG } from "@/config"
 import { getRequestContext } from "@cloudflare/next-on-pages"
 import { getUserId } from "@/lib/apiKey"
-import { getUserRole } from "@/lib/auth"
-import { ROLES } from "@/lib/permissions"
+import { getUserRole, checkPermission } from "@/lib/auth"
+import { ROLES, PERMISSIONS } from "@/lib/permissions"
 
 export const runtime = "edge"
 
@@ -17,9 +17,12 @@ export async function POST(request: Request) {
   const env = getRequestContext().env
 
   const userId = await getUserId()
-  const userRole = await getUserRole(userId!)
-
+  if (!userId || !(await checkPermission(PERMISSIONS.MANAGE_EMAIL))) {
+    return NextResponse.json({ error: "权限不足" }, { status: 403 })
+  }
   try {
+    const userRole = await getUserRole(userId)
+    if (!userRole) return NextResponse.json({ error: "权限不足" }, { status: 403 })
     if (userRole !== ROLES.EMPEROR) {
       const maxEmails = await env.SITE_CONFIG.get("MAX_EMAILS") || EMAIL_CONFIG.MAX_ACTIVE_EMAILS.toString()
       const activeEmailsCount = await db
@@ -54,7 +57,7 @@ export async function POST(request: Request) {
     }
 
     const domainString = await env.SITE_CONFIG.get("EMAIL_DOMAINS")
-    const domains = domainString ? domainString.split(',') : ["moemail.app"]
+    const domains = domainString ? domainString.split(',').map(value => value.trim().toLowerCase()).filter(Boolean) : ["moemail.app"]
 
     if (!domains || !domains.includes(domain)) {
       return NextResponse.json(
@@ -63,7 +66,10 @@ export async function POST(request: Request) {
       )
     }
 
-    const address = `${name || nanoid(8)}@${domain}`
+    if (name !== undefined && name !== "" && (typeof name !== "string" || !/^[a-zA-Z0-9][a-zA-Z0-9._+-]{0,63}$/.test(name))) {
+      return NextResponse.json({ error: "Invalid mailbox name" }, { status: 400 })
+    }
+    const address = `${name || nanoid(8)}@${domain}`.toLowerCase()
     const existingEmail = await db.query.emails.findFirst({
       where: eq(sql`LOWER(${emails.address})`, address.toLowerCase())
     })
@@ -96,10 +102,13 @@ export async function POST(request: Request) {
       email: result[0].address 
     })
   } catch (error) {
+    if (String(error).includes("UNIQUE constraint failed")) {
+      return NextResponse.json({ error: "该邮箱地址已被使用" }, { status: 409 })
+    }
     console.error('Failed to generate email:', error)
     return NextResponse.json(
       { error: "创建邮箱失败" },
       { status: 500 }
     )
   }
-} 
+}

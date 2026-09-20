@@ -10,6 +10,7 @@ export function registerSendCommand(program: Command) {
     .requiredOption("--to <address>", "recipient email address")
     .requiredOption("--subject <subject>", "email subject")
     .requiredOption("--content <content>", "email body text")
+    .option("--idempotency-key <key>", "reuse the same key when retrying a send")
     .action(async (opts) => {
       const json = program.opts().json;
       try {
@@ -17,7 +18,7 @@ export function registerSendCommand(program: Command) {
           to: opts.to,
           subject: opts.subject,
           content: opts.content,
-        })) as any;
+        }, opts.idempotencyKey)) as any;
 
         if (json) {
           printJson({

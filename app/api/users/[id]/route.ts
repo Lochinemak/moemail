@@ -1,3 +1,5 @@
+import { tryDrainAssetDeletionQueue } from "@/lib/asset-cleanup";
+import { getRequestContext } from "@cloudflare/next-on-pages";
 import { createDb } from "@/lib/db";
 import { users, userRoles, apiKeys } from "@/lib/schema";
 import { eq } from "drizzle-orm";
@@ -41,8 +43,11 @@ export async function DELETE(
     }
 
     // apiKeys 未配置级联删除，需先手动删除；其余（accounts / emails→messages / webhooks / userRoles）由外键级联处理
-    await db.delete(apiKeys).where(eq(apiKeys.userId, userId));
-    await db.delete(users).where(eq(users.id, userId));
+    await db.batch([
+      db.delete(apiKeys).where(eq(apiKeys.userId, userId)),
+      db.delete(users).where(eq(users.id, userId)),
+    ]);
+    await tryDrainAssetDeletionQueue(getRequestContext().env);
 
     return Response.json({ success: true });
   } catch (error) {

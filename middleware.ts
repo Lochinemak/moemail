@@ -21,7 +21,8 @@ export async function middleware(request: Request) {
   if (pathname.startsWith('/api')) {
     if (
       pathname.startsWith('/api/auth') ||
-      pathname.startsWith('/api/shared')
+      pathname.startsWith('/api/shared') ||
+      pathname.startsWith('/api/media/')
     ) {
       return NextResponse.next()
     }

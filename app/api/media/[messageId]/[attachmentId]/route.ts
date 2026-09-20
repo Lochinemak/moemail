@@ -1,6 +1,6 @@
 import { getRequestContext } from "@cloudflare/next-on-pages"
 import { NextResponse } from "next/server"
-import { verifyMediaSignature } from "@/lib/media"
+import { verifyMediaSignature, mediaResponseHeaders, SAFE_IMAGE_TYPES } from "@/lib/media"
 
 export const runtime = "edge"
 
@@ -40,16 +40,12 @@ export async function GET(
     if (!attachment || attachment.attachmentExpiresAt < Date.now() || attachment.emailExpiresAt < Date.now()) {
       return new NextResponse("Gone", { status: 410 })
     }
+    if (!SAFE_IMAGE_TYPES.has(attachment.contentType)) return new NextResponse("Unsupported media", { status: 415 })
 
     const object = await env.EMAIL_ASSETS.get(attachment.objectKey)
     if (!object) return new NextResponse("Not found", { status: 404 })
 
-    const headers = new Headers()
-    headers.set("Content-Type", attachment.contentType)
-    headers.set("Content-Length", String(attachment.size))
-    headers.set("Content-Disposition", "inline")
-    headers.set("Cache-Control", "public, max-age=86400, immutable")
-    headers.set("X-Content-Type-Options", "nosniff")
+    const headers = mediaResponseHeaders(attachment.contentType, attachment.size)
     if (object.httpEtag) headers.set("ETag", object.httpEtag)
     const response = new Response(object.body, { headers })
     return response

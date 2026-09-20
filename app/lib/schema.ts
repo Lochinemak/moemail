@@ -50,7 +50,7 @@ export const emails = sqliteTable("email", {
 }, (table) => ({
   expiresAtIdx: index("email_expires_at_idx").on(table.expiresAt),
   userIdIdx: index("email_user_id_idx").on(table.userId),
-  addressLowerIdx: index("email_address_lower_idx").on(sql`LOWER(${table.address})`),
+  addressLowerIdx: uniqueIndex("email_address_lower_idx").on(sql`LOWER(${table.address})`),
 }))
 
 export const messages = sqliteTable("message", {
@@ -94,7 +94,7 @@ export const webhooks = sqliteTable('webhook', {
 
 export const roles = sqliteTable("role", {
   id: text("id").primaryKey().$defaultFn(() => crypto.randomUUID()),
-  name: text("name").notNull(),
+  name: text("name").notNull().unique(),
   description: text("description"),
   createdAt: integer("created_at", { mode: "timestamp" }).$defaultFn(() => new Date()),
   updatedAt: integer("updated_at", { mode: "timestamp" }).$defaultFn(() => new Date()),
@@ -122,7 +122,27 @@ export const userRoles = sqliteTable("user_role", {
 }, (table) => ({
   pk: primaryKey({ columns: [table.userId, table.roleId] }),
   userIdIdx: index("user_role_user_id_idx").on(table.userId),
+  oneRolePerUser: uniqueIndex("user_role_user_unique").on(table.userId),
 }));
+
+// Independent of messages/mailboxes: deleting mail must not restore send quota.
+export const sendRequests = sqliteTable("send_request", {
+  id: text("id").primaryKey(),
+  userId: text("user_id").notNull().references(() => users.id, { onDelete: "cascade" }),
+  requestKey: text("request_key").notNull(),
+  payloadHash: text("payload_hash").notNull(),
+  status: text("status", { enum: ["pending", "sent", "failed"] }).notNull(),
+  providerId: text("provider_id"),
+  createdAt: integer("created_at", { mode: "timestamp_ms" }).notNull(),
+}, (table) => ({
+  requestUnique: uniqueIndex("send_request_user_key_unique").on(table.userId, table.requestKey),
+  usageIdx: index("send_request_usage_idx").on(table.userId, table.createdAt, table.status),
+}));
+
+// A database trigger enqueues keys even when attachments are cascade-deleted.
+export const assetDeletionQueue = sqliteTable("asset_deletion_queue", {
+  objectKey: text("object_key").primaryKey(),
+});
 
 export const apiKeys = sqliteTable('api_keys', {
   id: text('id').primaryKey().$defaultFn(() => crypto.randomUUID()),

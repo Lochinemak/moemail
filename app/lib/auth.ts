@@ -8,7 +8,7 @@ import { eq } from "drizzle-orm"
 import { getRequestContext } from "@cloudflare/next-on-pages"
 import { Permission, hasPermission, ROLES, Role } from "./permissions"
 import CredentialsProvider from "next-auth/providers/credentials"
-import { hashPassword, comparePassword } from "@/lib/utils"
+import { hashPassword, comparePassword, needsPasswordUpgrade } from "@/lib/password"
 import { authSchema, AuthSchema } from "@/lib/validation"
 import { generateAvatarUrl } from "./avatar"
 import { getUserId } from "./apiKey"
@@ -35,33 +35,24 @@ const getDefaultRole = async (): Promise<Role> => {
   return ROLES.CIVILIAN
 }
 
-async function findOrCreateRole(db: Db, roleName: Role) {
-  let role = await db.query.roles.findFirst({
+export async function findOrCreateRole(db: Db, roleName: Role) {
+  await db.insert(roles).values({
+    name: roleName,
+    description: ROLE_DESCRIPTIONS[roleName],
+  }).onConflictDoNothing({ target: roles.name })
+  const role = await db.query.roles.findFirst({
     where: eq(roles.name, roleName),
   })
 
-  if (!role) {
-    const [newRole] = await db.insert(roles)
-      .values({
-        name: roleName,
-        description: ROLE_DESCRIPTIONS[roleName],
-      })
-      .returning()
-    role = newRole
-  }
-
-  return role
+  return role!
 }
 
 export async function assignRoleToUser(db: Db, userId: string, roleId: string) {
-  await db.delete(userRoles)
-    .where(eq(userRoles.userId, userId))
-
   await db.insert(userRoles)
     .values({
       userId,
       roleId,
-    })
+    }).onConflictDoUpdate({ target: userRoles.userId, set: { roleId } })
 }
 
 export async function getUserRole(userId: string) {
@@ -70,7 +61,7 @@ export async function getUserRole(userId: string) {
     where: eq(userRoles.userId, userId),
     with: { role: true },
   })
-  return userRoleRecords[0].role.name
+  return userRoleRecords[0]?.role.name ?? null
 }
 
 export async function checkPermission(permission: Permission) {
@@ -150,9 +141,14 @@ export const {
           throw new Error("用户名或密码错误")
         }
 
-        const isValid = await comparePassword(parsedCredentials.password, user.password as string)
+        const isValid = await comparePassword(parsedCredentials.password, user.password)
         if (!isValid) {
           throw new Error("用户名或密码错误")
+        }
+
+        if (needsPasswordUpgrade(user.password)) {
+          await db.update(users).set({ password: await hashPassword(parsedCredentials.password) })
+            .where(eq(users.id, user.id))
         }
 
         return {
@@ -176,7 +172,8 @@ export const {
 
         const defaultRole = await getDefaultRole()
         const role = await findOrCreateRole(db, defaultRole)
-        await assignRoleToUser(db, user.id, role.id)
+        await db.insert(userRoles).values({ userId: user.id, roleId: role.id })
+          .onConflictDoNothing({ target: userRoles.userId })
       } catch (error) {
         console.error('Error assigning role:', error)
       }
@@ -208,13 +205,12 @@ export const {
         if (!userRoleRecords.length) {
           const defaultRole = await getDefaultRole()
           const role = await findOrCreateRole(db, defaultRole)
-          await assignRoleToUser(db, session.user.id, role.id)
-          userRoleRecords = [{
-            userId: session.user.id,
-            roleId: role.id,
-            createdAt: new Date(),
-            role: role
-          }]
+          await db.insert(userRoles).values({ userId: session.user.id, roleId: role.id })
+            .onConflictDoNothing({ target: userRoles.userId })
+          userRoleRecords = await db.query.userRoles.findMany({
+            where: eq(userRoles.userId, session.user.id),
+            with: { role: true },
+          })
         }
 
         session.user.roles = userRoleRecords.map(ur => ({

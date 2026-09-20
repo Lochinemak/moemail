@@ -221,11 +221,12 @@ export function registerTools(server: McpServer): void {
         to: z.string().describe("Recipient email address"),
         subject: z.string().describe("Email subject"),
         content: z.string().describe("Email body text"),
+        idempotencyKey: z.string().regex(/^[a-zA-Z0-9_-]{8,128}$/).optional().describe("Reuse this key when retrying the same message; failures return the generated key"),
       },
     },
-    ({ emailId, to, subject, content }) =>
+    ({ emailId, to, subject, content, idempotencyKey }) =>
       run(async () => {
-        const result = (await api.sendEmail(emailId, { to, subject, content })) as any;
+        const result = (await api.sendEmail(emailId, { to, subject, content }, idempotencyKey)) as any;
         return ok({ success: true, remainingEmails: result.remainingEmails });
       }),
   );

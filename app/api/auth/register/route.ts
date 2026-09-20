@@ -30,7 +30,7 @@ export async function POST(request: Request) {
 
     const user = await register(username, password)
 
-    return NextResponse.json({ user })
+    return NextResponse.json({ user: { id: user.id, username: user.username } })
   } catch (error) {
     return NextResponse.json(
       { error: error instanceof Error ? error.message : "注册失败" },

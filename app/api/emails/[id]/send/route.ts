@@ -1,134 +1,98 @@
 import { NextResponse } from "next/server"
 import { getUserId } from "@/lib/apiKey"
 import { createDb } from "@/lib/db"
-import { emails, messages } from "@/lib/schema"
-import { eq } from "drizzle-orm"
+import { emails } from "@/lib/schema"
+import { and, eq, gt } from "drizzle-orm"
 import { getRequestContext } from "@cloudflare/next-on-pages"
-import { checkSendPermission } from "@/lib/send-permissions"
+import { checkBasicSendPermission, getUserDailyLimit } from "@/lib/send-permissions"
+import { completeSend, countSends, reserveSend } from "@/lib/send-requests"
+import { z } from "zod"
 
 export const runtime = "edge"
 
-interface SendEmailRequest {
-  to: string
-  subject: string
-  content: string
-}
+const sendSchema = z.object({
+  to: z.string().email().max(254),
+  subject: z.string().trim().min(1).max(998),
+  content: z.string().min(1).max(1_000_000),
+})
 
-async function sendWithResend(
-  to: string,
-  subject: string,
-  content: string,
-  fromEmail: string,
-  config: { apiKey: string }
-) {
-  const response = await fetch('https://api.resend.com/emails', {
-    method: 'POST',
-    headers: {
-      'Content-Type': 'application/json',
-      'Authorization': `Bearer ${config.apiKey}`,
-    },
-    body: JSON.stringify({
-      from: fromEmail,
-      to: [to],
-      subject: subject,
-      html: content,
-    }),
-  })
-
-  if (!response.ok) {
-    const errorData = await response.json() as { message?: string }
-    console.error('Resend API error:', errorData)
-    throw new Error(errorData.message || "Resend发送失败，请稍后重试")
+export async function POST(request: Request, { params }: { params: Promise<{ id: string }> }) {
+  const requestKey = request.headers.get("Idempotency-Key")
+  if (!requestKey || !/^[a-zA-Z0-9_-]{8,128}$/.test(requestKey)) {
+    return NextResponse.json({ error: "A valid Idempotency-Key header is required" }, { status: 400 })
   }
+  const reply = (body: object, status = 200) => NextResponse.json(
+    { ...body, idempotencyKey: requestKey }, { status, headers: { "Cache-Control": "no-store" } }
+  )
 
-  return { success: true }
-}
-
-export async function POST(
-  request: Request,
-  { params }: { params: Promise<{ id: string }> }
-) {
   try {
     const userId = await getUserId()
-    if (!userId) {
-      return NextResponse.json(
-        { error: "未授权" },
-        { status: 401 }
-      )
-    }
-
+    if (!userId) return reply({ error: "Unauthorized" }, 401)
+    const permission = await checkBasicSendPermission(userId)
+    if (!permission.canSend) return reply({ error: permission.error }, 403)
+    const body = sendSchema.safeParse(await request.json())
+    if (!body.success) return reply({ error: "Invalid recipient, subject or content" }, 400)
+    const { to, subject, content } = body.data
     const { id } = await params
-    const db = createDb()
-
-    const permissionResult = await checkSendPermission(userId)
-    if (!permissionResult.canSend) {
-      return NextResponse.json(
-        { error: permissionResult.error },
-        { status: 403 }
-      )
-    }
-    
-    const remainingEmails = permissionResult.remainingEmails
-
-    const { to, subject, content } = await request.json() as SendEmailRequest
-
-    if (!to || !subject || !content) {
-      return NextResponse.json(
-        { error: "收件人、主题和内容都是必填项" },
-        { status: 400 }
-      )
-    }
-
-    const email = await db.query.emails.findFirst({
-      where: eq(emails.id, id)
-    })
-
-    if (!email) {
-      return NextResponse.json(
-        { error: "邮箱不存在" },
-        { status: 404 }
-      )
-    }
-
-    if (email.userId !== userId) {
-      return NextResponse.json(
-        { error: "无权访问此邮箱" },
-        { status: 403 }
-      )
-    }
-
     const env = getRequestContext().env
     const apiKey = await env.SITE_CONFIG.get("RESEND_API_KEY")
+    if (!apiKey) return reply({ error: "Email service is not configured" }, 503)
+    const limit = await getUserDailyLimit(userId)
+    if (limit < 0) return reply({ error: "Permission denied" }, 403)
+    const hash = Array.from(new Uint8Array(await crypto.subtle.digest(
+      "SHA-256", new TextEncoder().encode(JSON.stringify({ id, to, subject, content }))
+    )), byte => byte.toString(16).padStart(2, "0")).join("")
 
-    if (!apiKey) {
-      return NextResponse.json(
-        { error: "Resend 发件服务未配置，请联系管理员" },
-        { status: 500 }
-      )
+    // Check the existing reservation before mailbox lookup: a completed retry
+    // remains successful even after the user has deleted the sent message/mailbox.
+    const existing = await env.DB.prepare(
+      "SELECT payload_hash, status FROM send_request WHERE user_id = ? AND request_key = ?"
+    ).bind(userId, requestKey).first<{ payload_hash: string; status: string }>()
+    if (existing?.payload_hash && existing.payload_hash !== hash) return reply({ error: "Idempotency key was used for another message" }, 409)
+    if (existing?.status === "sent") return reply({ success: true, remainingEmails: limit === 0 ? undefined : Math.max(0, limit - await countSends(env.DB, userId)) })
+    if (existing?.status === "failed") return reply({ error: "This attempt was rejected; use a new key for a new attempt", retryWithNewKey: true }, 409)
+
+    const email = await createDb().query.emails.findFirst({
+      where: and(eq(emails.id, id), eq(emails.userId, userId), gt(emails.expiresAt, new Date())),
+    })
+    if (!email) return reply({ error: "Mailbox not found or expired" }, 404)
+    const reservation = await reserveSend(env.DB, userId, requestKey, hash, limit)
+    if (!reservation) return reply({ error: "Daily send limit reached", remainingEmails: 0 }, 429)
+    if (reservation.payload_hash !== hash) return reply({ error: "Idempotency key was used for another message" }, 409)
+    if (reservation.status === "failed") return reply({ error: "This attempt was rejected", retryWithNewKey: true }, 409)
+    if (reservation.status !== "sent") {
+      // Resend retains idempotency keys for 24h. Never resend an uncertain older
+      // attempt after that window, even if a client reuses its key.
+      if (Date.now() - reservation.created_at >= 23 * 60 * 60 * 1000) {
+        return reply({ error: "Send outcome is unresolved; contact the administrator before retrying" }, 409)
+      }
+      const response = await fetch("https://api.resend.com/emails", {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          Authorization: `Bearer ${apiKey}`,
+          "Idempotency-Key": `moemail-${reservation.id}`,
+        },
+        body: JSON.stringify({ from: email.address, to: [to], subject, html: content }),
+        signal: AbortSignal.timeout(15_000),
+      })
+      if (!response.ok) {
+        // Definitive validation/auth failures release quota. Timeouts, conflicts,
+        // throttling and server errors keep the reservation for a safe retry.
+        if ([400, 401, 403, 404, 422].includes(response.status)) {
+          await env.DB.prepare("UPDATE send_request SET status = 'failed' WHERE id = ? AND status = 'pending'")
+            .bind(reservation.id).run()
+          return reply({ error: "Email provider rejected the request; correct the request or service configuration before a new attempt", retryWithNewKey: true }, 502)
+        }
+        return reply({ error: "Email provider rejected the request; retry with the same key to check its outcome" }, 502)
+      }
+      const result = await response.json() as { id: string }
+      if (!result.id) return reply({ error: "Email provider returned an unknown outcome; retry with the same key" }, 502)
+      await completeSend(env.DB, { id: reservation.id, userId, emailId: email.id, to, subject, content, providerId: result.id })
     }
-
-    await sendWithResend(to, subject, content, email.address, { apiKey })
-
-    await db.insert(messages).values({
-      emailId: email.id,
-      fromAddress: email.address,
-      toAddress: to,
-      subject,
-      content: '',
-      type: "sent",
-      html: content
-    })
-
-    return NextResponse.json({ 
-      success: true,
-      message: "邮件发送成功",
-      remainingEmails
-    })
-  } catch (error) {
-    console.error('Failed to send email:', error)
-    return NextResponse.json(
-      { error: error instanceof Error ? error.message : "发送邮件失败" },
-      { status: 500 }
-    )
+    return reply({ success: true, remainingEmails: limit === 0 ? undefined : Math.max(0, limit - await countSends(env.DB, userId)) })
+  } catch {
+    // Do not discard an uncertain reservation: the provider may already have sent.
+    return reply({ error: "Unable to confirm delivery; retry with the same Idempotency-Key" }, 503)
   }
-} 
+}

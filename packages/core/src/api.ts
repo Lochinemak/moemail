@@ -5,6 +5,7 @@ async function request(
   method: string,
   path: string,
   body?: Record<string, unknown>,
+  options: { signal?: AbortSignal; idempotencyKey?: string } = {},
 ): Promise<unknown> {
   const config = loadConfig();
 
@@ -26,11 +27,15 @@ async function request(
   if (body) {
     headers["Content-Type"] = "application/json";
   }
+  if (options.idempotencyKey) headers["Idempotency-Key"] = options.idempotencyKey;
 
   const res = await fetch(url, {
     method,
     headers,
     body: body ? JSON.stringify(body) : undefined,
+    signal: options.signal
+      ? AbortSignal.any([options.signal, AbortSignal.timeout(20_000)])
+      : AbortSignal.timeout(20_000),
   });
 
   if (res.status === 204) {
@@ -73,8 +78,8 @@ export const api = {
   listEmails: (cursor?: string) =>
     request("GET", `/api/emails${cursor ? `?cursor=${cursor}` : ""}`),
 
-  listMessages: (emailId: string, cursor?: string) =>
-    request("GET", `/api/emails/${emailId}${cursor ? `?cursor=${cursor}` : ""}`),
+  listMessages: (emailId: string, cursor?: string, signal?: AbortSignal) =>
+    request("GET", `/api/emails/${encodeURIComponent(emailId)}${cursor ? `?cursor=${encodeURIComponent(cursor)}` : ""}`, undefined, { signal }),
 
   getMessage: (emailId: string, messageId: string) =>
     request("GET", `/api/emails/${emailId}/${messageId}`),
@@ -85,6 +90,12 @@ export const api = {
   deleteMessage: (emailId: string, messageId: string) =>
     request("DELETE", `/api/emails/${emailId}/${messageId}`),
 
-  sendEmail: (emailId: string, body: { to: string; subject: string; content: string }) =>
-    request("POST", `/api/emails/${emailId}/send`, body),
+  sendEmail: async (emailId: string, body: { to: string; subject: string; content: string }, idempotencyKey: string = crypto.randomUUID()) => {
+    try {
+      return await request("POST", `/api/emails/${encodeURIComponent(emailId)}/send`, body, { idempotencyKey });
+    } catch (error) {
+      if (error instanceof Error) error.message += ` (idempotency key: ${idempotencyKey}; reuse it for an unresolved attempt, use a new key only after a definitive rejection)`;
+      throw error;
+    }
+  },
 };

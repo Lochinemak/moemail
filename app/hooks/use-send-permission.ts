@@ -2,12 +2,14 @@ import { useState, useEffect } from 'react'
 
 interface SendPermissionResponse {
   canSend: boolean
+  canViewSent?: boolean
   error?: string
   remainingEmails?: number
 }
 
 export function useSendPermission() {
   const [canSend, setCanSend] = useState(false)
+  const [canViewSent, setCanViewSent] = useState(false)
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState<string | null>(null)
   const [remainingEmails, setRemainingEmails] = useState<number | undefined>()
@@ -25,6 +27,7 @@ export function useSendPermission() {
 
       const data = await response.json() as SendPermissionResponse
       setCanSend(data.canSend)
+      setCanViewSent(data.canViewSent ?? false)
       setRemainingEmails(data.remainingEmails)
       
       if (!data.canSend && data.error) {
@@ -32,6 +35,7 @@ export function useSendPermission() {
       }
     } catch (err) {
       setCanSend(false)
+      setCanViewSent(false)
       setError(err instanceof Error ? err.message : '权限检查失败')
     } finally {
       setLoading(false)
@@ -44,9 +48,10 @@ export function useSendPermission() {
 
   return {
     canSend,
+    canViewSent,
     loading,
     error,
     remainingEmails,
     checkPermission
   }
-} 
+}

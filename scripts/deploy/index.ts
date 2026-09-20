@@ -80,19 +80,24 @@ const setupConfigFile = (examplePath: string, targetPath: string) => {
     }
     if (targetPath.endsWith("wrangler.media.json")) {
       json.name = PROJECT_NAME + "-media-worker";
-      const customDomain = process.env.CUSTOM_DOMAIN;
+      const customDomain = process.env.MEDIA_URL_BASE || process.env.CUSTOM_DOMAIN;
       if (customDomain) {
         const domainUrl = /^https?:\/\//i.test(customDomain)
           ? customDomain
           : "https://" + customDomain;
         const hostname = new URL(domainUrl).hostname;
-        const zoneName = process.env.MEDIA_ZONE_NAME || hostname.split(".").slice(-3).join(".");
-        json.routes = [{ pattern: hostname + "/api/media/*", zone_name: zoneName }];
+        if (!hostname.endsWith(".pages.dev")) {
+          // Wrangler resolves the owning zone; do not guess public suffix lengths.
+          json.routes = [{ pattern: hostname + "/api/media/*", ...(process.env.MEDIA_ZONE_NAME ? { zone_name: process.env.MEDIA_ZONE_NAME } : {}) }];
+        }
       }
     }
+    const mediaBase = process.env.MEDIA_URL_BASE || process.env.CUSTOM_DOMAIN;
+    const mediaOrigin = mediaBase ? new URL(/^https?:\/\//i.test(mediaBase) ? mediaBase : "https://" + mediaBase).origin : undefined;
+    if (!mediaOrigin) throw new Error("MEDIA_URL_BASE or a Pages/custom domain is required");
     json.vars = {
       ...(json.vars || {}),
-      ...(process.env.MEDIA_URL_BASE ? { MEDIA_URL_BASE: process.env.MEDIA_URL_BASE } : {}),
+      MEDIA_URL_BASE: mediaOrigin,
       ...(process.env.MEDIA_MAX_BYTES ? { MEDIA_MAX_BYTES: process.env.MEDIA_MAX_BYTES } : {}),
       ...(process.env.MEDIA_TOTAL_MAX_BYTES ? { MEDIA_TOTAL_MAX_BYTES: process.env.MEDIA_TOTAL_MAX_BYTES } : {}),
     };
@@ -273,7 +278,8 @@ const checkAndCreatePages = async () => {
   console.log(`🔍 Checking if project "${PROJECT_NAME}" exists...`);
 
   try {
-    await getPages();
+    const pages = await getPages();
+    if (!process.env.CUSTOM_DOMAIN && pages.subdomain) updateEnvVar("CUSTOM_DOMAIN", `https://${pages.subdomain}`);
     console.log("✅ Project already exists, proceeding with update...");
   } catch (error) {
     if (error instanceof NotFoundError) {
@@ -308,6 +314,7 @@ const pushPagesSecret = () => {
     'AUTH_GOOGLE_ID', 
     'AUTH_GOOGLE_SECRET', 
     'AUTH_SECRET',
+    'LEGACY_PASSWORD_SECRET',
     'MEDIA_SIGNING_SECRET'
   ];
 
@@ -534,11 +541,11 @@ const main = async () => {
 
     validateEnvironment();
     setupEnvFile();
+    await checkAndCreatePages();
     setupWranglerConfigs();
     await checkAndCreateDatabase();
     migrateDatabase();
     await checkAndCreateKVNamespace();
-    await checkAndCreatePages();
     pushPagesSecret();
     deployPages();
     deployEmailWorker();
