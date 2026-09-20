@@ -132,7 +132,9 @@ export const sendRequests = sqliteTable("send_request", {
   requestKey: text("request_key").notNull(),
   payloadHash: text("payload_hash").notNull(),
   status: text("status", { enum: ["pending", "sent", "failed"] }).notNull(),
+  provider: text("provider", { enum: ["resend", "mailgun"] }).notNull().default("resend"),
   providerId: text("provider_id"),
+  attemptedAt: integer("attempted_at", { mode: "timestamp_ms" }),
   createdAt: integer("created_at", { mode: "timestamp_ms" }).notNull(),
 }, (table) => ({
   requestUnique: uniqueIndex("send_request_user_key_unique").on(table.userId, table.requestKey),

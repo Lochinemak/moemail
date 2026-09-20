@@ -4,12 +4,14 @@ import { eq } from "drizzle-orm"
 import { getRequestContext } from "@cloudflare/next-on-pages"
 import { EMAIL_CONFIG } from "@/config"
 import { countSends } from "./send-requests"
+import { parseEmailProvider } from "./email-provider"
 
 export interface SendPermissionResult {
   canSend: boolean
   canViewSent?: boolean
   error?: string
   remainingEmails?: number
+  allowedSenderDomain?: string
 }
 
 export async function checkSendPermission(
@@ -18,7 +20,14 @@ export async function checkSendPermission(
 ): Promise<SendPermissionResult> {
   try {
     const env = getRequestContext().env
-    const enabled = await env.SITE_CONFIG.get("EMAIL_SERVICE_ENABLED")
+    const [enabled, providerValue, mailgunDomain] = await Promise.all([
+      env.SITE_CONFIG.get("EMAIL_SERVICE_ENABLED"),
+      env.SITE_CONFIG.get("EMAIL_PROVIDER"),
+      env.SITE_CONFIG.get("MAILGUN_DOMAIN"),
+    ])
+    const allowedSenderDomain = parseEmailProvider(providerValue) === "mailgun"
+      ? mailgunDomain?.trim().toLowerCase()
+      : undefined
 
     if (enabled !== "true") {
       return {
@@ -39,7 +48,8 @@ export async function checkSendPermission(
     if (skipDailyLimitCheck || userDailyLimit === 0) {
       return {
         canSend: true,
-        canViewSent: true
+        canViewSent: true,
+        allowedSenderDomain,
       }
     }
     
@@ -51,14 +61,16 @@ export async function checkSendPermission(
         canSend: false,
         canViewSent: true,
         error: `您今天已达到发件限制 (${userDailyLimit} 封)，请明天再试`,
-        remainingEmails: 0
+        remainingEmails: 0,
+        allowedSenderDomain,
       }
     }
 
     return {
       canSend: true,
       canViewSent: true,
-      remainingEmails
+      remainingEmails,
+      allowedSenderDomain,
     }
   } catch (error) {
     console.error('Failed to check send permission:', error)

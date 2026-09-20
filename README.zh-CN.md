@@ -66,7 +66,7 @@
 - 📱 **PWA 支持**：支持 PWA 安装
 - 💸 **免费自部署**：基于 Cloudflare 构建, 可实现免费自部署，无需任何费用
 - 🎉 **可爱的 UI**：简洁可爱萌萌哒 UI 界面
-- 📤 **发件功能**：支持使用临时邮箱发送邮件，基于 Resend 服务
+- 📤 **发件功能**：支持通过 Resend 或 Mailgun 使用临时邮箱发件
 - 🔔 **Webhook 通知**：支持通过 webhook 接收新邮件通知
 - 🛡️ **权限系统**：支持基于角色的权限控制系统
 - 🔑 **OpenAPI**：支持通过 API Key 访问 OpenAPI
@@ -309,7 +309,7 @@ pnpm dlx tsx ./scripts/deploy/index.ts
 
 ## 发件功能
 
-MoeMail 支持使用临时邮箱发送邮件，基于 [Resend](https://resend.com/) 服务。
+MoeMail 支持通过 [Resend](https://resend.com/) 或 [Mailgun](https://www.mailgun.com/) 使用临时邮箱发送邮件。
 
 ### 功能特性
 
@@ -330,17 +330,17 @@ MoeMail 支持使用临时邮箱发送邮件，基于 [Resend](https://resend.co
 
 ### 配置发件服务
 
-1. **获取 Resend API Key**
-   - 访问 [Resend 官网](https://resend.com/) 注册账号
-   - 在控制台中创建 API Key
-   - 复制 API Key 供后续配置使用
+1. **准备发信服务商**
+   - 使用 Resend 时，在 Resend 控制台创建 API Key。
+   - 使用 Mailgun 时，验证 US 区域的发信域名并创建该域名专用的 Sending Key，建议不要使用主账户密钥。
 
 2. **配置发件服务**
    - 皇帝角色登录 MoeMail
    - 进入个人中心页面
-   - 在"Resend 发件服务配置"部分：
+   - 在“发件服务配置”部分：
      - 启用发件服务开关
-     - 填入 Resend API Key
+     - 选择 Resend 或 Mailgun 并填入对应 API Key
+     - 使用 Mailgun 时填入已验证发信域名；只有与该域名完全一致的邮箱可以发信
      - 设置公爵和骑士的每日发件限制（可选）
    - 点击保存配置
 
@@ -368,14 +368,14 @@ MoeMail 支持使用临时邮箱发送邮件，基于 [Resend](https://resend.co
 
 ### 发件 API 重试与升级
 
-`POST /api/emails/{id}/send` 必须带 `Idempotency-Key` 请求头（8–128 位字母、数字、`_` 或 `-`，推荐 UUID）。超时或投递结果不确定时，使用原 key 和相同内容重试；同一 key 换内容会返回 409。网页、CLI 和 MCP 已自动生成 key；CLI 可传 `--idempotency-key`，MCP 可传 `idempotencyKey`。确定被供应商拒绝时返回 `retryWithNewKey: true`，修正请求或服务配置后再用新 key 发起新尝试。
+`POST /api/emails/{id}/send` 必须带 `Idempotency-Key` 请求头（8–128 位字母、数字、`_` 或 `-`，推荐 UUID）；同一 key 换内容会返回 409。网页、CLI 和 MCP 已自动生成 key；CLI 可传 `--idempotency-key`，MCP 可传 `idempotencyKey`。Resend 重试会复用供应商幂等键；Mailgun 请求最多提交一次，结果不确定时会保留额度且不会再次调用 Mailgun。确定被供应商拒绝时返回 `retryWithNewKey: true`。
 
-部署新版应用和 Worker 前须先执行 `0021_review_integrity.sql` 迁移。每日用量独立记账，删信不恢复额度，结果未确认的发送保留额度。迁移检查、旧密码兼容和媒体配置见[升级与验证说明](specs/review-fixes-2026-09-20.md)。
+部署新版应用和 Worker 前须执行到 `0022_mailgun_provider.sql` 的全部迁移。每日用量独立记账，删信不恢复额度，结果未确认的发送保留额度。迁移检查、旧密码兼容和媒体配置见[升级与验证说明](specs/review-fixes-2026-09-20.md)。
 
 ### 注意事项
 
-- 📋 **Resend 限制**：请注意 Resend 服务的发送限制和定价政策
-- 🔐 **域名验证**：使用自定义域名发件需要在 Resend 中验证域名
+- 📋 **服务商限制**：请注意所选服务商的发送限制和定价政策
+- 🔐 **域名验证**：自定义发信域名需要在所选服务商中完成验证
 - 🚫 **反垃圾邮件**：请遵守邮件发送规范，避免发送垃圾邮件
 - 📊 **配额监控**：系统会自动统计每日发件数量，达到限额后将无法继续发送
 - 🔄 **配额重置**：每日发件配额在每天 UTC 00:00 自动重置

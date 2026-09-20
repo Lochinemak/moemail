@@ -23,7 +23,7 @@ export function ThreeColumnLayout() {
   const [selectedMessageType, setSelectedMessageType] = useState<'received' | 'sent'>('received')
   const [refreshTrigger, setRefreshTrigger] = useState(0)
   const { copyToClipboard } = useCopy()
-  const { canSend: canSendEmails } = useSendPermission()
+  const { canSendFrom, allowedSenderDomain } = useSendPermission()
 
   const columnClass = "border-2 border-primary/20 bg-background rounded-lg overflow-hidden flex flex-col"
   const headerClass = "p-2 border-b-2 border-primary/20 flex items-center justify-between shrink-0"
@@ -81,12 +81,17 @@ export function ThreeColumnLayout() {
                       <Copy className="size-4" />
                     </div>
                   </div>
-                  {selectedEmail && canSendEmails && (
+                  {selectedEmail && canSendFrom(selectedEmail.address) && (
                     <SendDialog 
                       emailId={selectedEmail.id} 
                       fromAddress={selectedEmail.address}
                       onSendSuccess={handleSendSuccess}
                     />
+                  )}
+                  {selectedEmail && allowedSenderDomain && !canSendFrom(selectedEmail.address) && (
+                    <span className="text-xs font-normal text-muted-foreground whitespace-nowrap">
+                      {t("sendingDomainOnly", { domain: allowedSenderDomain })}
+                    </span>
                   )}
                 </div>
               ) : (
@@ -162,12 +167,17 @@ export function ThreeColumnLayout() {
                       <Copy className="size-4" />
                     </div>
                   </div>
-                  {canSendEmails && (
+                  {canSendFrom(selectedEmail.address) && (
                     <SendDialog 
                       emailId={selectedEmail.id} 
                       fromAddress={selectedEmail.address}
                       onSendSuccess={handleSendSuccess}
                     />
+                  )}
+                  {allowedSenderDomain && !canSendFrom(selectedEmail.address) && (
+                    <span className="text-xs font-normal text-muted-foreground whitespace-nowrap">
+                      {t("sendingDomainOnly", { domain: allowedSenderDomain })}
+                    </span>
                   )}
                 </div>
               </div>
@@ -207,4 +217,4 @@ export function ThreeColumnLayout() {
       </div>
     </div>
   )
-} 
+}

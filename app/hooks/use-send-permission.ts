@@ -5,6 +5,7 @@ interface SendPermissionResponse {
   canViewSent?: boolean
   error?: string
   remainingEmails?: number
+  allowedSenderDomain?: string
 }
 
 export function useSendPermission() {
@@ -13,6 +14,7 @@ export function useSendPermission() {
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState<string | null>(null)
   const [remainingEmails, setRemainingEmails] = useState<number | undefined>()
+  const [allowedSenderDomain, setAllowedSenderDomain] = useState<string | undefined>()
 
   const checkPermission = async () => {
     setLoading(true)
@@ -29,6 +31,7 @@ export function useSendPermission() {
       setCanSend(data.canSend)
       setCanViewSent(data.canViewSent ?? false)
       setRemainingEmails(data.remainingEmails)
+      setAllowedSenderDomain(data.allowedSenderDomain)
       
       if (!data.canSend && data.error) {
         setError(data.error)
@@ -52,6 +55,10 @@ export function useSendPermission() {
     loading,
     error,
     remainingEmails,
+    allowedSenderDomain,
+    canSendFrom: (address: string) => canSend && (
+      !allowedSenderDomain || address.toLowerCase().endsWith(`@${allowedSenderDomain}`)
+    ),
     checkPermission
   }
 }

@@ -2,7 +2,9 @@ export interface SendRequest {
   id: string
   payload_hash: string
   status: "pending" | "sent" | "failed"
+  provider: "resend" | "mailgun"
   provider_id: string | null
+  attempted_at: number | null
   created_at: number
 }
 
@@ -10,19 +12,33 @@ export function startOfUtcDay(now = Date.now()) {
   return Math.floor(now / 86_400_000) * 86_400_000
 }
 
-export async function reserveSend(db: D1Database, userId: string, key: string, hash: string, limit: number) {
+export async function reserveSend(
+  db: D1Database,
+  userId: string,
+  key: string,
+  hash: string,
+  limit: number,
+  provider: "resend" | "mailgun"
+) {
   const now = Date.now()
   // The quota check and reservation are one SQLite write. The unique key also
   // makes two concurrent attempts at the same logical send share a reservation.
   await db.prepare(`
-    INSERT INTO send_request (id, user_id, request_key, payload_hash, status, created_at)
-    SELECT ?, ?, ?, ?, 'pending', ?
+    INSERT INTO send_request (id, user_id, request_key, payload_hash, status, provider, created_at)
+    SELECT ?, ?, ?, ?, 'pending', ?, ?
     WHERE ? = 0 OR (SELECT COUNT(*) FROM send_request
       WHERE user_id = ? AND created_at >= ? AND status != 'failed') < ?
     ON CONFLICT(user_id, request_key) DO NOTHING
-  `).bind(crypto.randomUUID(), userId, key, hash, now, limit, userId, startOfUtcDay(now), limit).run()
+  `).bind(crypto.randomUUID(), userId, key, hash, provider, now, limit, userId, startOfUtcDay(now), limit).run()
   return db.prepare("SELECT * FROM send_request WHERE user_id = ? AND request_key = ?")
     .bind(userId, key).first<SendRequest>()
+}
+
+export async function claimProviderAttempt(db: D1Database, id: string) {
+  const result = await db.prepare(
+    "UPDATE send_request SET attempted_at = ? WHERE id = ? AND status = 'pending' AND attempted_at IS NULL"
+  ).bind(Date.now(), id).run()
+  return (result.meta.changes ?? 0) === 1
 }
 
 export async function countSends(db: D1Database, userId: string) {

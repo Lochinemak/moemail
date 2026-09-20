@@ -13,7 +13,8 @@
     "messageContent": "邮件内容",
     "selectMessage": "选择邮件查看详情",
     "backToEmailList": "← 返回邮箱列表",
-    "backToMessageList": "← 返回消息列表"
+    "backToMessageList": "← 返回消息列表",
+    "sendingDomainOnly": "仅 @{domain} 可发信"
   },
   "list": {
     "emailCount": "{count}/{max} 个邮箱",

@@ -9,10 +9,20 @@ import { Input } from "@/components/ui/input"
 import { Switch } from "@/components/ui/switch"
 import { Label } from "@/components/ui/label"
 import { Checkbox } from "@/components/ui/checkbox"
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
 
 interface EmailServiceConfig {
   enabled: boolean
-  apiKey: string
+  provider: "resend" | "mailgun"
+  resend: {
+    apiKey: string
+    apiKeyConfigured: boolean
+  }
+  mailgun: {
+    apiKey: string
+    apiKeyConfigured: boolean
+    domain: string
+  }
   roleLimits: {
     duke: number
     knight: number
@@ -25,7 +35,9 @@ export function EmailServiceConfig() {
   const tSend = useTranslations("emails.send")
   const [config, setConfig] = useState<EmailServiceConfig>({
     enabled: false,
-    apiKey: "",
+    provider: "resend",
+    resend: { apiKey: "", apiKeyConfigured: false },
+    mailgun: { apiKey: "", apiKeyConfigured: false, domain: "stu.glahu.edu.kg" },
     roleLimits: {
       duke: -1,
       knight: -1,
@@ -43,8 +55,15 @@ export function EmailServiceConfig() {
     try {
       const res = await fetch("/api/config/email-service")
       if (res.ok) {
-        const data = await res.json() as EmailServiceConfig
-        setConfig(data)
+        const data = await res.json() as Omit<EmailServiceConfig, "resend" | "mailgun"> & {
+          resend: { apiKeyConfigured: boolean }
+          mailgun: { apiKeyConfigured: boolean; domain: string }
+        }
+        setConfig({
+          ...data,
+          resend: { ...data.resend, apiKey: "" },
+          mailgun: { ...data.mailgun, apiKey: "" },
+        })
       }
     } catch (error) {
       console.error("Failed to fetch email service config:", error)
@@ -56,7 +75,9 @@ export function EmailServiceConfig() {
     try {
       const saveData = {
         enabled: config.enabled,
-        apiKey: config.apiKey,
+        provider: config.provider,
+        resend: { apiKey: config.resend.apiKey },
+        mailgun: { apiKey: config.mailgun.apiKey, domain: config.mailgun.domain },
         roleLimits: config.roleLimits
       }
 
@@ -71,6 +92,7 @@ export function EmailServiceConfig() {
         throw new Error(error.error || t("saveFailed"))
       }
 
+      await fetchConfig()
       toast({
         title: t("saveSuccess"),
         description: t("saveSuccess"),
@@ -115,16 +137,39 @@ export function EmailServiceConfig() {
         {config.enabled && (
           <>
             <div className="space-y-2">
+              <Label htmlFor="emailProvider" className="text-sm font-medium">{t("provider")}</Label>
+              <Select
+                value={config.provider}
+                onValueChange={(provider: "resend" | "mailgun") =>
+                  setConfig((prev) => ({ ...prev, provider }))
+                }
+              >
+                <SelectTrigger id="emailProvider">
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="resend">Resend</SelectItem>
+                  <SelectItem value="mailgun">Mailgun</SelectItem>
+                </SelectContent>
+              </Select>
+            </div>
+
+            <div className="space-y-2">
               <Label htmlFor="apiKey" className="text-sm font-medium">
-                {t("apiKey")}
+                {config.provider === "mailgun" ? t("mailgunApiKey") : t("resendApiKey")}
               </Label>
               <div className="relative">
                 <Input
                   id="apiKey"
                   type={showToken ? "text" : "password"}
-                  value={config.apiKey}
-                  onChange={(e: React.ChangeEvent<HTMLInputElement>) => setConfig((prev: EmailServiceConfig) => ({ ...prev, apiKey: e.target.value }))}
-                  placeholder={t("apiKeyPlaceholder")}
+                  value={config[config.provider].apiKey}
+                  onChange={(e: React.ChangeEvent<HTMLInputElement>) => setConfig((prev) => ({
+                    ...prev,
+                    [prev.provider]: { ...prev[prev.provider], apiKey: e.target.value },
+                  }))}
+                  placeholder={config[config.provider].apiKeyConfigured
+                    ? t("apiKeyConfiguredPlaceholder")
+                    : t("apiKeyPlaceholder")}
                 />
                 <Button
                   type="button"
@@ -133,14 +178,29 @@ export function EmailServiceConfig() {
                   className="absolute right-0 top-0 h-full px-3 py-2 hover:bg-transparent"
                   onClick={() => setShowToken(!showToken)}
                 >
-                  {showToken ? (
-                    <EyeOff className="h-4 w-4" />
-                  ) : (
-                    <Eye className="h-4 w-4" />
-                  )}
+                  {showToken ? <EyeOff className="h-4 w-4" /> : <Eye className="h-4 w-4" />}
                 </Button>
               </div>
+              {config[config.provider].apiKeyConfigured && (
+                <p className="text-xs text-muted-foreground">{t("apiKeyConfigured")}</p>
+              )}
             </div>
+
+            {config.provider === "mailgun" && (
+              <div className="space-y-2">
+                <Label htmlFor="mailgunDomain" className="text-sm font-medium">{t("mailgunDomain")}</Label>
+                <Input
+                  id="mailgunDomain"
+                  value={config.mailgun.domain}
+                  onChange={(e) => setConfig((prev) => ({
+                    ...prev,
+                    mailgun: { ...prev.mailgun, domain: e.target.value },
+                  }))}
+                  placeholder="stu.glahu.edu.kg"
+                />
+                <p className="text-xs text-muted-foreground">{t("mailgunDomainDescription")}</p>
+              </div>
+            )}
 
             <div className="space-y-2">
               <Label className="text-sm font-medium">
@@ -262,4 +322,4 @@ export function EmailServiceConfig() {
       </div>
     </div>
   )
-} 
+}

@@ -66,7 +66,7 @@ The documentation site contains detailed usage guides, API documentation, deploy
 - 📱 **PWA Support**: Support PWA installation
 - 💸 **Free Self-hosting**: Built on Cloudflare, capable of free self-hosting without any cost
 - 🎉 **Cute UI**: Simple and cute UI interface
-- 📤 **Sending Function**: Support sending emails using temporary addresses, based on Resend service
+- 📤 **Sending Function**: Send from temporary addresses through Resend or Mailgun
 - 🔔 **Webhook Notification**: Support receiving new email notifications via webhook
 - 🛡️ **Permission System**: Role-based access control system
 - 🔑 **OpenAPI**: Support accessing OpenAPI via API Key
@@ -310,7 +310,7 @@ System settings are stored in Cloudflare KV, including:
 
 ## Sending Emails
 
-MoeMail supports sending emails using temporary addresses, based on [Resend](https://resend.com/) service.
+MoeMail supports sending emails using temporary addresses through [Resend](https://resend.com/) or [Mailgun](https://www.mailgun.com/).
 
 ### Features
 
@@ -331,17 +331,17 @@ MoeMail supports sending emails using temporary addresses, based on [Resend](htt
 
 ### Configure Sending Service
 
-1. **Get Resend API Key**
-   - Register at [Resend](https://resend.com/)
-   - Create API Key in console
-   - Copy API Key for later use
+1. **Prepare a provider**
+   - For Resend, create an API key in the Resend console.
+   - For Mailgun, verify a US-region sending domain and create a domain-scoped Sending Key. A domain key is preferred over a primary account key.
 
 2. **Configure Service**
    - Login as Emperor
    - Go to User Profile
-   - In "Resend Service Configuration":
+   - In "Email Service Configuration":
      - Enable Sending Service switch
-     - Enter Resend API Key
+     - Select Resend or Mailgun and enter its API key
+     - For Mailgun, enter the verified sending domain. Only mailboxes on that exact domain can send.
      - Set daily limits for Duke and Knight (Optional)
    - Save configuration
 
@@ -369,14 +369,14 @@ MoeMail supports sending emails using temporary addresses, based on [Resend](htt
 
 ### Send API retries and upgrades
 
-`POST /api/emails/{id}/send` requires an `Idempotency-Key` header (8–128 letters, digits, `_` or `-`; a UUID is suitable). Reuse the same key and identical payload after a timeout or unknown delivery outcome. Reusing a key for different content returns 409. The web UI, CLI and MCP supply keys; CLI callers can use `--idempotency-key`, and MCP callers can pass `idempotencyKey`. A definitive rejection returns `retryWithNewKey: true`; correct the request/configuration before starting a new attempt.
+`POST /api/emails/{id}/send` requires an `Idempotency-Key` header (8–128 letters, digits, `_` or `-`; a UUID is suitable). Reusing a key for different content returns 409. The web UI, CLI and MCP supply keys; CLI callers can use `--idempotency-key`, and MCP callers can pass `idempotencyKey`. Resend retries reuse its provider idempotency key. Mailgun attempts are submitted at most once; an uncertain Mailgun result retains quota and is not submitted again. A definitive rejection returns `retryWithNewKey: true`.
 
-Apply migration `0021_review_integrity.sql` before deploying the updated application and workers. Daily usage is recorded independently of deletable mail; unresolved sends reserve quota. See the [upgrade and verification notes](specs/review-fixes-2026-09-20.md) for migration checks, legacy passwords and media configuration.
+Apply migrations through `0022_mailgun_provider.sql` before deploying the updated application and workers. Daily usage is recorded independently of deletable mail; unresolved sends reserve quota. See the [upgrade and verification notes](specs/review-fixes-2026-09-20.md) for migration checks, legacy passwords and media configuration.
 
 ### Notes
 
-- 📋 **Resend Limits**: Please note Resend's sending limits and pricing
-- 🔐 **Domain Verification**: Using custom domains requires verification in Resend
+- 📋 **Provider Limits**: Please note the selected provider's sending limits and pricing
+- 🔐 **Domain Verification**: Custom sending domains must be verified with the selected provider
 - 🚫 **Anti-Spam**: Please follow email sending standards, avoid spamming
 - 📊 **Quota Monitoring**: System counts daily usage, stops sending when limit reached
 - 🔄 **Quota Reset**: Daily quota resets at 00:00 UTC
