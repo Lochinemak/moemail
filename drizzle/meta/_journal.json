@@ -141,6 +141,13 @@
       "when": 1770000000000,
       "tag": "0019_message_attachment",
       "breakpoints": true
+    },
+    {
+      "idx": 20,
+      "version": "6",
+      "when": 1789879500000,
+      "tag": "0020_attachment_media_token",
+      "breakpoints": true
     }
   ]
 }

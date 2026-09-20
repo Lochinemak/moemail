@@ -107,6 +107,7 @@ export const messageAttachments = sqliteTable("message_attachment", {
   objectKey: text("object_key").notNull().unique(),
   contentType: text("content_type").notNull(),
   size: integer("size").notNull(),
+  mediaToken: text("media_token"),
   createdAt: integer("created_at", { mode: "timestamp_ms" }).notNull().$defaultFn(() => new Date()),
   expiresAt: integer("expires_at", { mode: "timestamp_ms" }).notNull(),
 }, (table) => ({

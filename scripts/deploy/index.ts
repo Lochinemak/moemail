@@ -405,20 +405,6 @@ const pushEmailWorkerSecret = () => {
   }
 };
 
-const pushMediaWorkerSecret = () => {
-  const secret = process.env.MEDIA_SIGNING_SECRET;
-  if (!secret) return;
-  const secretFile = resolve(".media-secrets.json");
-  writeFileSync(secretFile, JSON.stringify({ MEDIA_SIGNING_SECRET: secret }));
-  try {
-    execSync("pnpm dlx wrangler secret bulk " + secretFile + " --config wrangler.media.json", {
-      stdio: "inherit",
-    });
-  } finally {
-    if (existsSync(secretFile)) execSync("rm " + secretFile, { stdio: "inherit" });
-  }
-};
-
 /**
  * 部署Pages应用
  */
@@ -466,7 +452,6 @@ const deployMediaWorker = () => {
   console.log("🚧 Deploying Email Media Worker...");
   try {
     execSync("pnpm dlx wrangler deploy --config wrangler.media.json", { stdio: "inherit" });
-    pushMediaWorkerSecret();
     console.log("✅ Email Media Worker deployed successfully");
   } catch (error) {
     console.error("❌ Email Media Worker deployment failed:", error);

@@ -69,6 +69,7 @@ const handleEmail = async (message: ForwardableEmailMessage, env: Env) => {
         },
         customMetadata: attachment.filename ? { filename: attachment.filename } : undefined,
       })
+      const signature = await createMediaSignature(env.MEDIA_SIGNING_SECRET || '', savedMessage.id, attachmentId, exp)
       await db.insert(messageAttachments).values({
         id: attachmentId,
         messageId: savedMessage.id,
@@ -76,9 +77,9 @@ const handleEmail = async (message: ForwardableEmailMessage, env: Env) => {
         objectKey,
         contentType: attachment.mediaType,
         size: bytes,
+        mediaToken: signature,
         expiresAt,
       })
-      const signature = await createMediaSignature(env.MEDIA_SIGNING_SECRET || '', savedMessage.id, attachmentId, exp)
       const url = mediaUrl(mediaBase, savedMessage.id, attachmentId, exp, signature)
       const cid = normalizedContentId
       rewrittenHtml = rewrittenHtml.replace(new RegExp('cid:[ ]*<?' + cid.replace(/[.*+?^()|[\\]\\\\]/g, '\\\\$&') + '>?', 'gi'), url)
