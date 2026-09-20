@@ -3,6 +3,7 @@
   "name": "email-receiver-worker",
   "compatibility_date": "2024-03-20",
   "compatibility_flags": ["nodejs_compat"],
+  "limits": { "cpu_ms": 30000 },
   "main": "workers/email-receiver.ts",
   "d1_databases": [
     {
@@ -11,5 +12,8 @@
       "database_name": "moemail",
       "database_id": "${DATABASE_ID}"
     }
+  ],
+  "r2_buckets": [
+    { "binding": "EMAIL_ASSETS", "bucket_name": "${R2_BUCKET_NAME}" }
   ]
 }

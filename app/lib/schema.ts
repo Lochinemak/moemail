@@ -100,6 +100,20 @@ export const roles = sqliteTable("role", {
   updatedAt: integer("updated_at", { mode: "timestamp" }).$defaultFn(() => new Date()),
 });
 
+export const messageAttachments = sqliteTable("message_attachment", {
+  id: text("id").primaryKey().$defaultFn(() => crypto.randomUUID()),
+  messageId: text("message_id").notNull().references(() => messages.id, { onDelete: "cascade" }),
+  contentId: text("content_id").notNull(),
+  objectKey: text("object_key").notNull().unique(),
+  contentType: text("content_type").notNull(),
+  size: integer("size").notNull(),
+  createdAt: integer("created_at", { mode: "timestamp_ms" }).notNull().$defaultFn(() => new Date()),
+  expiresAt: integer("expires_at", { mode: "timestamp_ms" }).notNull(),
+}, (table) => ({
+  messageIdIdx: index("message_attachment_message_id_idx").on(table.messageId),
+  messageContentIdUnique: uniqueIndex("message_attachment_message_content_id_unique").on(table.messageId, table.contentId),
+}));
+
 export const userRoles = sqliteTable("user_role", {
   userId: text("user_id").notNull().references(() => users.id, { onDelete: "cascade" }),
   roleId: text("role_id").notNull().references(() => roles.id, { onDelete: "cascade" }),
@@ -193,4 +207,8 @@ export const messageSharesRelations = relations(messageShares, ({ one }) => ({
     fields: [messageShares.messageId],
     references: [messages.id],
   }),
+}));
+
+export const messageAttachmentsRelations = relations(messageAttachments, ({ one }) => ({
+  message: one(messages, { fields: [messageAttachments.messageId], references: [messages.id] }),
 }));

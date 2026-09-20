@@ -17,5 +17,8 @@
       "binding": "SITE_CONFIG",
       "id": "${KV_NAMESPACE_ID}"
     }
+  ],
+  "r2_buckets": [
+    { "binding": "EMAIL_ASSETS", "bucket_name": "${R2_BUCKET_NAME}" }
   ]
 }

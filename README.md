@@ -669,6 +669,11 @@ For full documentation, see [packages/mcp/README.md](packages/mcp/README.md).
 - `KV_NAMESPACE_NAME`: KV Name
 - `KV_NAMESPACE_ID`: KV ID (Optional, auto-fetched if empty)
 - `CUSTOM_DOMAIN`: Custom domain
+- `R2_BUCKET_NAME`: R2 bucket used for inline email images
+- `MEDIA_URL_BASE`: Public HTTPS base URL for media routes
+- `MEDIA_SIGNING_SECRET`: HMAC secret shared by the email Worker and Pages
+- `MEDIA_MAX_BYTES`: Maximum size of one inline image (default 10 MiB)
+- `MEDIA_TOTAL_MAX_BYTES`: Maximum inline image bytes per message (default 25 MiB)
 - `PROJECT_NAME`: Pages Project Name
 
 ## Github OAuth App Configuration

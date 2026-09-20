@@ -17,6 +17,7 @@ const DATABASE_NAME = process.env.DATABASE_NAME || "moemail-db";
 const KV_NAMESPACE_NAME = process.env.KV_NAMESPACE_NAME || "moemail-kv";
 const CUSTOM_DOMAIN = process.env.CUSTOM_DOMAIN;
 const KV_NAMESPACE_ID = process.env.KV_NAMESPACE_ID;
+const R2_BUCKET_NAME = process.env.R2_BUCKET_NAME;
 
 /**
  * 验证必要的环境变量
@@ -74,6 +75,15 @@ const setupConfigFile = (examplePath: string, targetPath: string) => {
     if (json.d1_databases && json.d1_databases.length > 0) {
       json.d1_databases[0].database_name = DATABASE_NAME;
     }
+    if (json.r2_buckets && json.r2_buckets.length > 0 && R2_BUCKET_NAME) {
+      json.r2_buckets[0].bucket_name = R2_BUCKET_NAME;
+    }
+    json.vars = {
+      ...(json.vars || {}),
+      ...(process.env.MEDIA_URL_BASE ? { MEDIA_URL_BASE: process.env.MEDIA_URL_BASE } : {}),
+      ...(process.env.MEDIA_MAX_BYTES ? { MEDIA_MAX_BYTES: process.env.MEDIA_MAX_BYTES } : {}),
+      ...(process.env.MEDIA_TOTAL_MAX_BYTES ? { MEDIA_TOTAL_MAX_BYTES: process.env.MEDIA_TOTAL_MAX_BYTES } : {}),
+    };
 
     // 写入配置文件
     writeFileSync(targetPath, JSON.stringify(json, null, 2));
@@ -283,7 +293,8 @@ const pushPagesSecret = () => {
     'AUTH_GITHUB_SECRET', 
     'AUTH_GOOGLE_ID', 
     'AUTH_GOOGLE_SECRET', 
-    'AUTH_SECRET'
+    'AUTH_SECRET',
+    'MEDIA_SIGNING_SECRET'
   ];
 
   try {
@@ -364,6 +375,25 @@ const pushPagesSecret = () => {
   }
 };
 
+const pushEmailWorkerSecret = () => {
+  const secret = process.env.MEDIA_SIGNING_SECRET;
+  if (!secret) {
+    console.log("⚠️ MEDIA_SIGNING_SECRET is not set; skipping Email Worker secret");
+    return;
+  }
+  const secretFile = resolve(".email-secrets.json");
+  writeFileSync(secretFile, JSON.stringify({ MEDIA_SIGNING_SECRET: secret }));
+  try {
+    execSync("pnpm dlx wrangler secret bulk " + secretFile + " --config wrangler.email.json", {
+      stdio: "inherit",
+    });
+  } finally {
+    if (existsSync(secretFile)) {
+      execSync("rm " + secretFile, { stdio: "inherit" });
+    }
+  }
+};
+
 /**
  * 部署Pages应用
  */
@@ -385,6 +415,7 @@ const deployEmailWorker = () => {
   console.log("🚧 Deploying Email Worker...");
   try {
     execSync("pnpm dlx wrangler deploy --config wrangler.email.json", { stdio: "inherit" });
+    pushEmailWorkerSecret();
     console.log("✅ Email Worker deployed successfully");
   } catch (error) {
     console.error("❌ Email Worker deployment failed:", error);

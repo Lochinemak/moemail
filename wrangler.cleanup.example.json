@@ -14,5 +14,8 @@
       "database_name": "moemail",
       "database_id": "${DATABASE_ID}"
     }
+  ],
+  "r2_buckets": [
+    { "binding": "EMAIL_ASSETS", "bucket_name": "${R2_BUCKET_NAME}" }
   ]
 }

@@ -1,5 +1,6 @@
 interface Env {
   DB: D1Database
+  EMAIL_ASSETS: R2Bucket
 }
 
 const CLEANUP_CONFIG = {
@@ -19,6 +20,14 @@ const main = {
         console.log('Expired email deletion is disabled')
         return
       }
+
+      const expired = await env.DB.prepare(
+        "SELECT ma.object_key AS objectKey FROM message_attachment ma JOIN message m ON m.id = ma.message_id JOIN email e ON e.id = m.emailId WHERE e.expires_at < ? LIMIT ?"
+      ).bind(now, CLEANUP_CONFIG.BATCH_SIZE).all<{ objectKey: string }>()
+      await Promise.all((expired.results || []).map((row) => env.EMAIL_ASSETS.delete(row.objectKey)))
+      await env.DB.prepare(
+        "DELETE FROM message_attachment WHERE message_id IN (SELECT m.id FROM message m JOIN email e ON e.id = m.emailId WHERE e.expires_at < ? LIMIT ?)"
+      ).bind(now, CLEANUP_CONFIG.BATCH_SIZE).run()
 
       const result = await env.DB
         .prepare(`

@@ -5,6 +5,11 @@ declare global {
   interface CloudflareEnv {
     DB: D1Database;
     SITE_CONFIG: KVNamespace;
+    EMAIL_ASSETS: R2Bucket;
+    MEDIA_SIGNING_SECRET?: string;
+    MEDIA_MAX_BYTES?: string;
+    MEDIA_TOTAL_MAX_BYTES?: string;
+    MEDIA_URL_BASE?: string;
   }
 
   interface Window {

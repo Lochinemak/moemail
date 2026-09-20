@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server"
 import { createDb } from "@/lib/db"
-import { messages, emails } from "@/lib/schema"
+import { messages, emails, messageAttachments } from "@/lib/schema"
+import { getRequestContext } from "@cloudflare/next-on-pages"
 import { and, eq } from "drizzle-orm"
 import { getUserId } from "@/lib/apiKey"
 export const runtime = "edge"
@@ -13,6 +14,7 @@ export async function DELETE(
 
   try {
     const db = createDb()
+    const env = getRequestContext().env
     const { id, messageId } = await params
     const email = await db.query.emails.findFirst({
       where: and(
@@ -42,6 +44,9 @@ export async function DELETE(
       )
     }
 
+    const attachments = await db.query.messageAttachments.findMany({ where: eq(messageAttachments.messageId, messageId) })
+    await Promise.all(attachments.map((attachment) => env.EMAIL_ASSETS.delete(attachment.objectKey)))
+    await db.delete(messageAttachments).where(eq(messageAttachments.messageId, messageId))
     await db.delete(messages)
         .where(eq(messages.id, messageId))
 
@@ -109,4 +114,4 @@ export async function GET(_request: Request, { params }: { params: Promise<{ id:
       { status: 500 }
     )
   }
-} 
+}

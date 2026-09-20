@@ -278,4 +278,4 @@ export function MessageView({ emailId, messageId, messageType = 'received' }: Me
       </div>
     </div>
   )
-} 
+}
