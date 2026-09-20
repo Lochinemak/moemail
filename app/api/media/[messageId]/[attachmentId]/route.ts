@@ -12,7 +12,7 @@ function timestamp(value: Date | number): number {
 }
 
 export async function GET(
-  request: Request,
+  _request: Request,
   { params }: { params: Promise<{ messageId: string; attachmentId: string }> }
 ) {
   const { messageId, attachmentId } = await params
@@ -24,11 +24,9 @@ export async function GET(
   if (!(await verifyMediaSignature(env.MEDIA_SIGNING_SECRET || "", messageId, attachmentId, exp, signature))) {
     return new NextResponse("Not found", { status: 404 })
   }
-
-  const cache = (globalThis.caches as unknown as { default?: Cache } | undefined)?.default
-  if (cache) {
-    const cached = await cache.match(request)
-    if (cached) return cached
+  if (!env.EMAIL_ASSETS) {
+    console.error("EMAIL_ASSETS R2 binding is missing from the Pages deployment")
+    return new NextResponse("Media storage unavailable", { status: 503 })
   }
 
   try {
@@ -56,7 +54,6 @@ export async function GET(
     headers.set("X-Content-Type-Options", "nosniff")
     if (object.httpEtag) headers.set("ETag", object.httpEtag)
     const response = new Response(object.body, { headers })
-    if (cache) await cache.put(request, response.clone())
     return response
   } catch (error) {
     console.error("Failed to serve email media:", error)
