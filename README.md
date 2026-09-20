@@ -674,6 +674,7 @@ For full documentation, see [packages/mcp/README.md](packages/mcp/README.md).
 - `MEDIA_SIGNING_SECRET`: HMAC secret shared by the email Worker and Pages
 - `MEDIA_MAX_BYTES`: Maximum size of one inline image (default 10 MiB)
 - `MEDIA_TOTAL_MAX_BYTES`: Maximum inline image bytes per message (default 25 MiB)
+- `MEDIA_ZONE_NAME`: Optional Cloudflare zone name for the media Worker route
 - `PROJECT_NAME`: Pages Project Name
 
 ## Github OAuth App Configuration

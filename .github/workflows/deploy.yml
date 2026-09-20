@@ -49,6 +49,7 @@ jobs:
           MEDIA_URL_BASE: ${{ secrets.MEDIA_URL_BASE }}
           MEDIA_MAX_BYTES: ${{ secrets.MEDIA_MAX_BYTES }}
           MEDIA_TOTAL_MAX_BYTES: ${{ secrets.MEDIA_TOTAL_MAX_BYTES }}
+          MEDIA_ZONE_NAME: ${{ secrets.MEDIA_ZONE_NAME }}
           AUTH_GITHUB_ID: ${{ secrets.AUTH_GITHUB_ID }}
           AUTH_GITHUB_SECRET: ${{ secrets.AUTH_GITHUB_SECRET }}
           AUTH_GOOGLE_ID: ${{ secrets.AUTH_GOOGLE_ID }}

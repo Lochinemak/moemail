@@ -78,6 +78,15 @@ const setupConfigFile = (examplePath: string, targetPath: string) => {
     if (json.r2_buckets && json.r2_buckets.length > 0 && R2_BUCKET_NAME) {
       json.r2_buckets[0].bucket_name = R2_BUCKET_NAME;
     }
+    if (targetPath.endsWith("wrangler.media.json")) {
+      json.name = PROJECT_NAME + "-media-worker";
+      const customDomain = process.env.CUSTOM_DOMAIN;
+      if (customDomain) {
+        const hostname = new URL(customDomain).hostname;
+        const zoneName = process.env.MEDIA_ZONE_NAME || hostname.split(".").slice(-3).join(".");
+        json.routes = [{ pattern: hostname + "/api/media/*", zone_name: zoneName }];
+      }
+    }
     json.vars = {
       ...(json.vars || {}),
       ...(process.env.MEDIA_URL_BASE ? { MEDIA_URL_BASE: process.env.MEDIA_URL_BASE } : {}),
@@ -104,6 +113,7 @@ const setupWranglerConfigs = () => {
     { example: "wrangler.example.json", target: "wrangler.json" },
     { example: "wrangler.email.example.json", target: "wrangler.email.json" },
     { example: "wrangler.cleanup.example.json", target: "wrangler.cleanup.json" },
+    { example: "wrangler.media.example.json", target: "wrangler.media.json" },
   ];
 
   // 处理每个配置文件
@@ -126,6 +136,7 @@ const updateDatabaseConfig = (dbId: string) => {
     "wrangler.json",
     "wrangler.email.json",
     "wrangler.cleanup.json",
+    "wrangler.media.json",
   ];
 
   for (const filename of configFiles) {
@@ -394,6 +405,20 @@ const pushEmailWorkerSecret = () => {
   }
 };
 
+const pushMediaWorkerSecret = () => {
+  const secret = process.env.MEDIA_SIGNING_SECRET;
+  if (!secret) return;
+  const secretFile = resolve(".media-secrets.json");
+  writeFileSync(secretFile, JSON.stringify({ MEDIA_SIGNING_SECRET: secret }));
+  try {
+    execSync("pnpm dlx wrangler secret bulk " + secretFile + " --config wrangler.media.json", {
+      stdio: "inherit",
+    });
+  } finally {
+    if (existsSync(secretFile)) execSync("rm " + secretFile, { stdio: "inherit" });
+  }
+};
+
 /**
  * 部署Pages应用
  */
@@ -434,6 +459,18 @@ const deployCleanupWorker = () => {
   } catch (error) {
     console.error("❌ Cleanup Worker deployment failed:", error);
     // 继续执行而不中断
+  }
+};
+
+const deployMediaWorker = () => {
+  console.log("🚧 Deploying Email Media Worker...");
+  try {
+    execSync("pnpm dlx wrangler deploy --config wrangler.media.json", { stdio: "inherit" });
+    pushMediaWorkerSecret();
+    console.log("✅ Email Media Worker deployed successfully");
+  } catch (error) {
+    console.error("❌ Email Media Worker deployment failed:", error);
+    throw error;
   }
 };
 
@@ -517,6 +554,7 @@ const main = async () => {
     pushPagesSecret();
     deployPages();
     deployEmailWorker();
+    deployMediaWorker();
     deployCleanupWorker();
 
     console.log("🎉 Deployment completed successfully");

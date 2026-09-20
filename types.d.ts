@@ -10,6 +10,7 @@ declare global {
     MEDIA_MAX_BYTES?: string;
     MEDIA_TOTAL_MAX_BYTES?: string;
     MEDIA_URL_BASE?: string;
+    MEDIA_ZONE_NAME?: string;
   }
 
   interface Window {

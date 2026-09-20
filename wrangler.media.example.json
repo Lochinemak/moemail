@@ -1,0 +1,18 @@
+{
+  "$schema": "node_modules/wrangler/config-schema.json",
+  "name": "email-media-worker",
+  "compatibility_date": "2024-03-20",
+  "compatibility_flags": ["nodejs_compat"],
+  "main": "workers/media.ts",
+  "d1_databases": [
+    {
+      "binding": "DB",
+      "migrations_dir": "drizzle",
+      "database_name": "moemail",
+      "database_id": "DATABASE_PLACEHOLDER"
+    }
+  ],
+  "r2_buckets": [
+    { "binding": "EMAIL_ASSETS", "bucket_name": "R2_BUCKET_PLACEHOLDER" }
+  ]
+}
