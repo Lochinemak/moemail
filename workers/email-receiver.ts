@@ -35,9 +35,11 @@ const handleEmail = async (message: ForwardableEmailMessage, env: Env) => {
 
     const expiresAt = targetEmail.expiresAt
     const mediaBase = env.MEDIA_URL_BASE || 'https://moemail.app'
-    const attachments = (parsedMessage.attachments || []).filter((attachment: any) =>
-      typeof attachment.contentType === 'string' &&
-      attachment.contentType.toLowerCase().startsWith('image/') &&
+    const attachments = (parsedMessage.attachments || []).map((attachment: any) => ({
+      ...attachment,
+      mediaType: attachment.mimeType || attachment.contentType || '',
+    })).filter((attachment: any) =>
+      attachment.mediaType.toLowerCase().startsWith('image/') &&
       attachment.contentId
     )
     let totalBytes = 0
@@ -62,7 +64,7 @@ const handleEmail = async (message: ForwardableEmailMessage, env: Env) => {
       const exp = Math.floor(expiresAt.getTime() / 1000)
       await env.EMAIL_ASSETS.put(objectKey, content, {
         httpMetadata: {
-          contentType: attachment.contentType,
+          contentType: attachment.mediaType,
           cacheControl: 'public, max-age=86400, immutable',
         },
         customMetadata: attachment.filename ? { filename: attachment.filename } : undefined,
@@ -72,7 +74,7 @@ const handleEmail = async (message: ForwardableEmailMessage, env: Env) => {
         messageId: savedMessage.id,
         contentId: normalizedContentId,
         objectKey,
-        contentType: attachment.contentType,
+        contentType: attachment.mediaType,
         size: bytes,
         expiresAt,
       })
