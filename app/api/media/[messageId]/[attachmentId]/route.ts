@@ -16,7 +16,7 @@ export async function GET(
   { params }: { params: Promise<{ messageId: string; attachmentId: string }> }
 ) {
   const { messageId, attachmentId } = await params
-  const url = new URL(request.url)
+  const url = new URL(_request.url)
   const exp = Number(url.searchParams.get("exp"))
   const signature = url.searchParams.get("sig") || ""
   const env = getRequestContext().env
