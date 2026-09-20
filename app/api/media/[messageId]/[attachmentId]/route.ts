@@ -1,15 +1,8 @@
 import { getRequestContext } from "@cloudflare/next-on-pages"
-import { drizzle } from "drizzle-orm/d1"
-import { and, eq } from "drizzle-orm"
 import { NextResponse } from "next/server"
-import { emails, messageAttachments, messages } from "@/lib/schema"
 import { verifyMediaSignature } from "@/lib/media"
 
 export const runtime = "edge"
-
-function timestamp(value: Date | number): number {
-  return value instanceof Date ? value.getTime() : Number(value)
-}
 
 export async function GET(
   _request: Request,
@@ -30,18 +23,23 @@ export async function GET(
   }
 
   try {
-    const db = drizzle(env.DB, { schema: { emails, messages, messageAttachments } })
-    const attachment = await db.query.messageAttachments.findFirst({
-    where: and(eq(messageAttachments.id, attachmentId), eq(messageAttachments.messageId, messageId)),
-    })
-    if (!attachment || timestamp(attachment.expiresAt) < Date.now()) {
+    const attachment = await env.DB.prepare(
+      "SELECT ma.object_key AS objectKey, ma.content_type AS contentType, " +
+      "ma.size AS size, ma.expires_at AS attachmentExpiresAt, " +
+      "e.expires_at AS emailExpiresAt FROM message_attachment ma " +
+      "JOIN message m ON m.id = ma.message_id " +
+      "JOIN email e ON e.id = m.emailId " +
+      "WHERE ma.id = ? AND ma.message_id = ? LIMIT 1"
+    ).bind(attachmentId, messageId).first<{
+      objectKey: string
+      contentType: string
+      size: number
+      attachmentExpiresAt: number
+      emailExpiresAt: number
+    }>()
+    if (!attachment || attachment.attachmentExpiresAt < Date.now() || attachment.emailExpiresAt < Date.now()) {
       return new NextResponse("Gone", { status: 410 })
     }
-
-    const message = await db.query.messages.findFirst({ where: eq(messages.id, messageId) })
-    if (!message) return new NextResponse("Not found", { status: 404 })
-    const email = await db.query.emails.findFirst({ where: eq(emails.id, message.emailId) })
-    if (!email || timestamp(email.expiresAt) < Date.now()) return new NextResponse("Gone", { status: 410 })
 
     const object = await env.EMAIL_ASSETS.get(attachment.objectKey)
     if (!object) return new NextResponse("Not found", { status: 404 })
