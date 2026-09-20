@@ -82,7 +82,10 @@ const setupConfigFile = (examplePath: string, targetPath: string) => {
       json.name = PROJECT_NAME + "-media-worker";
       const customDomain = process.env.CUSTOM_DOMAIN;
       if (customDomain) {
-        const hostname = new URL(customDomain).hostname;
+        const domainUrl = /^https?:\/\//i.test(customDomain)
+          ? customDomain
+          : "https://" + customDomain;
+        const hostname = new URL(domainUrl).hostname;
         const zoneName = process.env.MEDIA_ZONE_NAME || hostname.split(".").slice(-3).join(".");
         json.routes = [{ pattern: hostname + "/api/media/*", zone_name: zoneName }];
       }
